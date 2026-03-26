@@ -29,10 +29,11 @@ function scaleCanvas(): void {
   const isWide = window.innerWidth > 900;
   const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
   const sidebarW = isWide && sidebar ? sidebar.offsetWidth + 24 : 0; // 24 = flex gap
+  const sidebarH = !isWide && sidebar ? sidebar.offsetHeight + 16 : 0; // stacked above canvas in narrow mode
   const header = document.querySelector('header') as HTMLElement | null;
   const footer = document.querySelector('footer') as HTMLElement | null;
-  const availW = window.innerWidth - 64 - sidebarW; // 32 body padding + 32 shadow/breathing room
-  const availH = window.innerHeight - (header?.offsetHeight ?? 0) - (footer?.offsetHeight ?? 0) - 80;
+  const availW = window.innerWidth - 64 - sidebarW;
+  const availH = window.innerHeight - (header?.offsetHeight ?? 0) - (footer?.offsetHeight ?? 0) - sidebarH - 80;
   const scale = Math.max(0.5, Math.min(availW / CANVAS_WIDTH, availH / CANVAS_HEIGHT, 3));
   canvas.style.width = Math.floor(CANVAS_WIDTH * scale) + 'px';
   // Height handled by CSS aspect-ratio: 696/488

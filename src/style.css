@@ -118,7 +118,8 @@ header {
     0 0 0 8px var(--zx-bcyan),
     8px 8px 0 8px rgba(0,0,0,0.5);
   display: inline-block;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
   line-height: 0;
 }
 
@@ -126,7 +127,7 @@ header {
   display: block;
   image-rendering: pixelated;
   aspect-ratio: 696 / 488;
-  max-width: calc(100vw - 32px); /* safety: never overflow viewport */
+  max-width: 100%; /* constrain to wrapper, which flex can shrink */
 }
 
 /* MUTE BUTTON */
