@@ -1,5 +1,5 @@
 import { COLS, ROWS, ECOLS, EROWS, CELL_SIZE, CANVAS_WIDTH, CANVAS_HEIGHT, HUD_HEIGHT, MAZE_Y, COLOR } from './constants.ts';
-import { BRICK, FLOOR, GEM, GUN, EXIT, ENEMY_SHAPE, MAN_FRONT_STAND, MAN_FRONT_WALK, MAN_RIGHT_STAND, MAN_RIGHT_WALK, MAN_LEFT_STAND, MAN_LEFT_WALK } from './sprites.ts';
+import { BRICK, FLOOR, GEM, GUN, EXIT, SKULL_FRONT_STAND, SKULL_FRONT_WALK, SKULL_RIGHT_STAND, SKULL_RIGHT_WALK, SKULL_LEFT_STAND, SKULL_LEFT_WALK, MAN_FRONT_STAND, MAN_FRONT_WALK, MAN_RIGHT_STAND, MAN_RIGHT_WALK, MAN_LEFT_STAND, MAN_LEFT_WALK } from './sprites.ts';
 import type { GemsState } from './gems.ts';
 import type { EnemyState } from './enemy.ts';
 import { Direction } from './types.ts';
@@ -81,6 +81,13 @@ export function drawMaze(ctx: CanvasRenderingContext2D, maze: MazeData): void {
       ctx.putImageData(tile, gx * CELL_SIZE, MAZE_Y + gy * CELL_SIZE);
     }
   }
+}
+
+/** Pick the right ghost sprite bitmap for an enemy's current direction and walk phase. */
+function getGhostSprite(dir: Direction, walk: number): readonly number[] {
+  if (dir === Direction.Left) return walk ? SKULL_LEFT_WALK : SKULL_LEFT_STAND;
+  if (dir === Direction.Right) return walk ? SKULL_RIGHT_WALK : SKULL_RIGHT_STAND;
+  return walk ? SKULL_FRONT_WALK : SKULL_FRONT_STAND;
 }
 
 /** Pick the right sprite bitmap for the player's current direction and walk phase. */
@@ -207,7 +214,7 @@ export function drawEnemy(ctx: CanvasRenderingContext2D, enemy: EnemyState, inde
   if (enemy.stunFrames > 0 && (frameCount & 4)) return;
 
   const color = COLOR.ENEMY[index % COLOR.ENEMY.length];
-  drawSprite(ctx, ENEMY_SHAPE, enemy.px, enemy.py, color);
+  drawSprite(ctx, getGhostSprite(enemy.dir, enemy.walk), enemy.px, enemy.py, color);
 }
 
 /**
@@ -243,6 +250,7 @@ export function drawHud(
   timerSec: number,
   hasGun: boolean,
   timerWarn: boolean,
+  isDemo = false,
 ): void {
   // Background
   ctx.fillStyle = COLOR.HUD_BG;
@@ -262,18 +270,29 @@ export function drawHud(
 
   // Gems to go
   ctx.fillStyle = COLOR.GEM;
-  ctx.fillText(`GEMS TO GO:${gemsToGo}`, 310, y);
+  ctx.fillText(`GEMS TO GO:${gemsToGo}`, 330, y);
 
   // Gun indicator
   if (hasGun) {
     ctx.fillStyle = COLOR.GUN;
-    ctx.fillText('GUN', 440, y);
+    ctx.fillText('GUN', 500, y);
   }
 
   // Timer
-  ctx.fillStyle = timerWarn ? COLOR.TIMER_WARN : COLOR.HUD_TEXT;
   ctx.textAlign = 'right';
-  ctx.fillText(`TIME:${String(timerSec).padStart(3, ' ')}`, CANVAS_WIDTH - 8, y);
+  ctx.fillStyle = timerWarn ? COLOR.TIMER_WARN : COLOR.HUD_TEXT;
+  const mins = Math.floor(timerSec / 60);
+  const secs = timerSec % 60;
+  const timeStr = `TIME: ${mins}:${String(secs).padStart(2, '0')}`;
+  const timeX = CANVAS_WIDTH - 8;
+  ctx.fillText(timeStr, timeX, y);
+
+  // DEMO label (left of timer)
+  if (isDemo) {
+    const timeW = ctx.measureText(timeStr).width;
+    ctx.fillStyle = '#FFFF00';
+    ctx.fillText('DEMO', timeX - timeW - 12, y);
+  }
 
 }
 
@@ -403,7 +422,7 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
   const castTextX = castLeft + CELL_SIZE + 12;
   const castEntries: Array<{ bitmap: readonly number[]; color: string; label: string; tile?: { fg: string; bg: string } }> = [
     { bitmap: MAN_FRONT_STAND, color: COLOR.PLAYER, label: 'YOU    Escape the maze alive!' },
-    { bitmap: ENEMY_SHAPE, color: COLOR.ENEMY[0], label: 'GHOST  Hunts you & steals gems' },
+    { bitmap: SKULL_FRONT_STAND, color: COLOR.ENEMY[0], label: 'GHOST  Hunts you & steals gems' },
     { bitmap: GEM, color: COLOR.GEM, label: 'GEM    Grab enough to open exit' },
     { bitmap: EXIT, color: COLOR.EXIT_LOCKED, label: 'EXIT   Locked until quota met' },
     { bitmap: GUN, color: COLOR.GUN, label: 'GUN    Stun ghosts for 8 sec' },
@@ -489,7 +508,7 @@ export function drawSpritesAtCellAttr(
   }
   for (const e of enemies) {
     if (e.gx === gx && e.gy === gy) {
-      drawSprite(ctx, ENEMY_SHAPE, e.px, e.py, attrColor);
+      drawSprite(ctx, SKULL_FRONT_STAND, e.px, e.py, attrColor);
     }
   }
   if (player.gx === gx && player.gy === gy) {

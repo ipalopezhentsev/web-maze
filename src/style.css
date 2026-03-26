@@ -53,7 +53,7 @@ body::after {
 /* TITLE */
 header {
   text-align: center;
-  margin-bottom: 12px;
+  margin-bottom: 24px;
 }
 
 .title-bar {
@@ -112,11 +112,7 @@ header {
 /* GAME CANVAS WRAPPER */
 .emu-wrapper {
   background: var(--zx-black);
-  border: 4px solid var(--zx-bwhite);
-  box-shadow:
-    0 0 0 4px var(--zx-blue),
-    0 0 0 8px var(--zx-bcyan),
-    8px 8px 0 8px rgba(0,0,0,0.5);
+  border: 2px solid var(--zx-bcyan);
   display: inline-block;
   flex-shrink: 1;
   min-width: 0;
@@ -125,9 +121,9 @@ header {
 
 #game {
   display: block;
-  image-rendering: pixelated;
+  image-rendering: auto;
   aspect-ratio: 696 / 488;
-  max-width: 100%; /* constrain to wrapper, which flex can shrink */
+  max-width: 100%;
 }
 
 /* MUTE BUTTON */

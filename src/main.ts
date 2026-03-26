@@ -36,7 +36,6 @@ function scaleCanvas(): void {
   const availH = window.innerHeight - (header?.offsetHeight ?? 0) - (footer?.offsetHeight ?? 0) - sidebarH - 80;
   const scale = Math.max(0.5, Math.min(availW / CANVAS_WIDTH, availH / CANVAS_HEIGHT, 3));
   canvas.style.width = Math.floor(CANVAS_WIDTH * scale) + 'px';
-  // Height handled by CSS aspect-ratio: 696/488
 }
 window.addEventListener('resize', scaleCanvas);
 
@@ -147,7 +146,7 @@ function startLevel(): void {
     drawEnemy(ctx2d, enemyCtx.enemies[i], i, 0, maze);
   }
   drawPlayer(ctx2d, player, maze);
-  drawHud(ctx2d, score, level, gems.gemsLeft - gems.gemsCollected, timerSec, gems.hasGun, false);
+  drawHud(ctx2d, score, level, gems.gemsLeft - gems.gemsCollected, timerSec, gems.hasGun, false, isDemo);
 
   prevPx = player.px;
   prevPy = player.py;
@@ -270,7 +269,7 @@ function startPresentation(): void {
 function endPresentation(): void {
   eraseRectBorder(presentRect);
   const gemsToGo = Math.max(0, gems.gemsNeeded - gems.gemsCollected);
-  drawHud(ctx2d, score, level, gemsToGo, timerSec, gems.hasGun, false);
+  drawHud(ctx2d, score, level, gemsToGo, timerSec, gems.hasGun, false, isDemo);
   phase = Phase.Playing;
 }
 
@@ -683,20 +682,7 @@ function tickPlaying(): void {
 
   // Update HUD
   const gemsToGo = Math.max(0, gems.gemsNeeded - gems.gemsCollected);
-  drawHud(ctx2d, score, level, gemsToGo, timerSec, gems.hasGun, timerSec <= 10);
-
-  // Demo label
-  if (isDemo) {
-    ctx2d.save();
-    ctx2d.font = 'bold 18px monospace';
-    ctx2d.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx2d.fillRect(CANVAS_WIDTH - 74, 5, 68, 22);
-    ctx2d.fillStyle = '#FFFF00';
-    ctx2d.textAlign = 'right';
-    ctx2d.textBaseline = 'top';
-    ctx2d.fillText('DEMO', CANVAS_WIDTH - 6, 6);
-    ctx2d.restore();
-  }
+  drawHud(ctx2d, score, level, gemsToGo, timerSec, gems.hasGun, timerSec <= 10, isDemo);
 }
 
 function tickHiScores(): void {

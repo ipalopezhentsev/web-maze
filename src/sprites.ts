@@ -71,5 +71,64 @@ export const MAN_RIGHT_WALK: readonly number[] = [0x18, 0x18, 0x1E, 0x30, 0x18, 
 export const MAN_LEFT_STAND: readonly number[] = [0x18, 0x18, 0x78, 0x0C, 0x18, 0x18, 0x24, 0x00];
 export const MAN_LEFT_WALK: readonly number[] = [0x18, 0x18, 0x78, 0x0C, 0x18, 0x24, 0x42, 0x00];
 
-/** Enemy diamond shape */
-export const ENEMY_SHAPE: readonly number[] = [0x00, 0x10, 0x28, 0x54, 0x28, 0x10, 0x00, 0x00];
+/** Enemy skull sprites: front/right/left × stand/walk */
+export const SKULL_FRONT_STAND: readonly number[] = [
+  0b00111100,
+  0b01111110,
+  0b11011011,
+  0b11111111,
+  0b10111101,
+  0b01100110,
+  0b00111100,
+  0b00000000,
+];
+export const SKULL_FRONT_WALK: readonly number[] = [
+  0b00111100,
+  0b01111110,
+  0b11011011,
+  0b11111111,
+  0b10111101,
+  0b01111110,
+  0b00111100,
+  0b00000000,
+];
+export const SKULL_RIGHT_STAND: readonly number[] = [
+  0b00111100,
+  0b01111110,
+  0b11101101,
+  0b11111111,
+  0b10111101,
+  0b01100110,
+  0b00111100,
+  0b00000000,
+];
+export const SKULL_RIGHT_WALK: readonly number[] = [
+  0b00111100,
+  0b01111110,
+  0b11101101,
+  0b11111111,
+  0b10111101,
+  0b01111110,
+  0b00111100,
+  0b00000000,
+];
+export const SKULL_LEFT_STAND: readonly number[] = [
+  0b00111100,
+  0b01111110,
+  0b10110111,
+  0b11111111,
+  0b10111101,
+  0b01100110,
+  0b00111100,
+  0b00000000,
+];
+export const SKULL_LEFT_WALK: readonly number[] = [
+  0b00111100,
+  0b01111110,
+  0b10110111,
+  0b11111111,
+  0b10111101,
+  0b01111110,
+  0b00111100,
+  0b00000000,
+];
