@@ -256,7 +256,7 @@ export function drawHud(
   ctx.fillStyle = COLOR.HUD_BG;
   ctx.fillRect(0, 0, CANVAS_WIDTH, HUD_HEIGHT);
 
-  ctx.font = "10px 'Press Start 2P', monospace";
+  ctx.font = "13px 'Press Start 2P', monospace";
   ctx.textBaseline = 'middle';
   const y = HUD_HEIGHT / 2;
 
@@ -266,16 +266,16 @@ export function drawHud(
   ctx.fillText(`SCORE:${String(score).padStart(6, '0')}`, 8, y);
 
   // Level
-  ctx.fillText(`LVL:${level}`, 210, y);
+  ctx.fillText(`LVL:${level}`, 195, y);
 
   // Gems to go
   ctx.fillStyle = COLOR.GEM;
-  ctx.fillText(`GEMS TO GO:${gemsToGo}`, 330, y);
+  ctx.fillText(`GEMS TO GO:${gemsToGo}`, 280, y);
 
   // Gun indicator
   if (hasGun) {
     ctx.fillStyle = COLOR.GUN;
-    ctx.fillText('GUN', 500, y);
+    ctx.fillText('GUN', 470, y);
   }
 
   // Timer
@@ -291,7 +291,7 @@ export function drawHud(
   if (isDemo) {
     const timeW = ctx.measureText(timeStr).width;
     ctx.fillStyle = '#FFFF00';
-    ctx.fillText('DEMO', timeX - timeW - 12, y);
+    ctx.fillText('DEMO', timeX - timeW - 16, y);
   }
 
 }
@@ -303,7 +303,7 @@ export function drawHud(
 export function drawOverlay(ctx: CanvasRenderingContext2D, lines: Array<{ text: string; color: string; size: number }>): void {
   const margin = 20;
   const BORDER = 6;
-  const BANNER_H = 5 * CELL_SIZE; // 120 px
+  const BANNER_H = 6 * CELL_SIZE; // 144 px
   const bannerY = MAZE_Y + Math.floor((EROWS * CELL_SIZE - BANNER_H) / 2);
 
   // Paper colour: red for game-over, dark green for level-won
@@ -320,9 +320,9 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, lines: Array<{ text: 
   ctx.fillRect(BORDER + margin, bannerY + BORDER, CANVAS_WIDTH - (BORDER + margin) * 2, BANNER_H - BORDER * 2);
 
   // Text layout
-  const TITLE_SIZE = 16;
-  const LINE_SIZE  = 11;
-  const PROMPT_SIZE = 10;
+  const TITLE_SIZE = 20;
+  const LINE_SIZE  = 14;
+  const PROMPT_SIZE = 13;
   const GAP = 8;
 
   const innerH = BANNER_H - BORDER * 2;
@@ -394,31 +394,30 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
 
   // Difficulty selection (top)
   ctx.fillStyle = COLOR.HUD_TEXT;
-  ctx.font = "13px 'Press Start 2P', monospace";
-  ctx.fillText('SELECT DIFFICULTY:', cx, 35);
+  ctx.font = "16px 'Press Start 2P', monospace";
+  ctx.fillText('SELECT DIFFICULTY:', cx, 40);
 
   for (let i = 0; i < diffNames.length; i++) {
-    const y = 70 + i * 34;
+    const y = 80 + i * 38;
     if (i === selectedDifficulty) {
       ctx.fillStyle = COLOR.PLAYER;
-      ctx.font = "13px 'Press Start 2P', monospace";
+      ctx.font = "16px 'Press Start 2P', monospace";
       ctx.fillText(`> ${diffNames[i]} <`, cx, y);
     } else {
       ctx.fillStyle = COLOR.HUD_TEXT;
-      ctx.font = "11px 'Press Start 2P', monospace";
+      ctx.font = "14px 'Press Start 2P', monospace";
       ctx.fillText(diffNames[i], cx, y);
     }
   }
 
   // --- The Cast ---
-  // diffNames.length options at spacing 34, first at y=70 → last at 70+(n-1)*34; add 55px gap
-  const castHeaderY = 70 + (diffNames.length - 1) * 34 + 90;
+  const castHeaderY = 80 + (diffNames.length - 1) * 38 + 80;
   ctx.textAlign = 'center';
   ctx.fillStyle = COLOR.GEM;
-  ctx.font = "11px 'Press Start 2P', monospace";
+  ctx.font = "14px 'Press Start 2P', monospace";
   ctx.fillText('--- The Cast ---', cx, castHeaderY);
 
-  const castLeft = 195;
+  const castLeft = 140;
   const castTextX = castLeft + CELL_SIZE + 12;
   const castEntries: Array<{ bitmap: readonly number[]; color: string; label: string; tile?: { fg: string; bg: string } }> = [
     { bitmap: MAN_FRONT_STAND, color: COLOR.PLAYER, label: 'YOU    Escape the maze alive!' },
@@ -429,10 +428,10 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
     { bitmap: BRICK, color: COLOR.WALL_BRICK, label: 'WALL   Don\'t get cornered!', tile: { fg: COLOR.WALL_BRICK, bg: COLOR.WALL_MORTAR } },
   ];
 
-  const castStartY = castHeaderY + 22;
-  const castSpacing = 26;
+  const castStartY = castHeaderY + 26;
+  const castSpacing = 30;
   ctx.textAlign = 'left';
-  ctx.font = "9px 'Press Start 2P', monospace";
+  ctx.font = "12px 'Press Start 2P', monospace";
 
   for (let i = 0; i < castEntries.length; i++) {
     const entry = castEntries[i];
@@ -448,8 +447,8 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
 
   ctx.textAlign = 'center';
   ctx.fillStyle = '#888888';
-  ctx.font = "9px 'Press Start 2P', monospace";
-  ctx.fillText('Up/Down to select, Enter to start', cx, CANVAS_HEIGHT - 10);
+  ctx.font = "12px 'Press Start 2P', monospace";
+  ctx.fillText('Up/Down to select, Enter to start', cx, CANVAS_HEIGHT - 14);
 
 }
 
@@ -523,14 +522,14 @@ export function drawPresentHud(ctx: CanvasRenderingContext2D, score: number, lev
   ctx.fillStyle = COLOR.HUD_BG;
   ctx.fillRect(0, 0, CANVAS_WIDTH, HUD_HEIGHT);
 
-  ctx.font = "10px 'Press Start 2P', monospace";
+  ctx.font = "13px 'Press Start 2P', monospace";
   ctx.textBaseline = 'middle';
   const y = HUD_HEIGHT / 2;
 
   ctx.fillStyle = COLOR.HUD_TEXT;
   ctx.textAlign = 'left';
   ctx.fillText(`SCORE:${String(score).padStart(6, '0')}`, 8, y);
-  ctx.fillText(`LVL:${level}`, 210, y);
+  ctx.fillText(`LVL:${level}`, 195, y);
 
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
@@ -555,26 +554,26 @@ export function drawNameEntry(
   ctx.textBaseline = 'middle';
 
   ctx.fillStyle = COLOR.GEM;
-  ctx.font = "16px 'Press Start 2P', monospace";
+  ctx.font = "20px 'Press Start 2P', monospace";
   ctx.fillText('HIGH SCORE!', cx, 90);
 
   ctx.fillStyle = '#FFFFFF';
-  ctx.font = "11px 'Press Start 2P', monospace";
-  ctx.fillText(`RANK #${rank + 1}   SCORE: ${String(score).padStart(6, '0')}`, cx, 150);
+  ctx.font = "14px 'Press Start 2P', monospace";
+  ctx.fillText(`RANK #${rank + 1}   SCORE: ${String(score).padStart(6, '0')}`, cx, 155);
 
   ctx.fillStyle = '#AAAAAA';
-  ctx.font = "10px 'Press Start 2P', monospace";
-  ctx.fillText('ENTER YOUR NAME:', cx, 230);
+  ctx.font = "13px 'Press Start 2P', monospace";
+  ctx.fillText('ENTER YOUR NAME:', cx, 235);
 
   // Name with blinking cursor
   const cursor = (tick >> 2) & 1 ? '_' : ' ';
   const nameDisplay = (currentText || '') + cursor;
   ctx.fillStyle = COLOR.PLAYER;
-  ctx.font = "14px 'Press Start 2P', monospace";
-  ctx.fillText(nameDisplay.toUpperCase(), cx, 280);
+  ctx.font = "18px 'Press Start 2P', monospace";
+  ctx.fillText(nameDisplay.toUpperCase(), cx, 290);
 
   ctx.fillStyle = '#888888';
-  ctx.font = "10px 'Press Start 2P', monospace";
+  ctx.font = "13px 'Press Start 2P', monospace";
   ctx.fillText('PRESS ENTER TO CONFIRM', cx, CANVAS_HEIGHT - 40);
 }
 
@@ -592,12 +591,12 @@ export function drawHighScores(
 
   // Title
   ctx.fillStyle = COLOR.GEM;
-  ctx.font = "16px 'Press Start 2P', monospace";
+  ctx.font = "20px 'Press Start 2P', monospace";
   ctx.fillText('HIGH SCORES', cx, 60);
 
-  ctx.font = "11px 'Press Start 2P', monospace";
+  ctx.font = "14px 'Press Start 2P', monospace";
   for (let i = 0; i < scores.length; i++) {
-    const y = 130 + i * 50;
+    const y = 135 + i * 55;
     const entry = scores[i];
 
     ctx.fillStyle = (i === newRank) ? COLOR.PLAYER : COLOR.GEM;
@@ -612,6 +611,6 @@ export function drawHighScores(
   }
 
   ctx.fillStyle = '#888888';
-  ctx.font = "10px 'Press Start 2P', monospace";
+  ctx.font = "13px 'Press Start 2P', monospace";
   ctx.fillText('Press any key to continue', cx, CANVAS_HEIGHT - 30);
 }

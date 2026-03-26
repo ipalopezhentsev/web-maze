@@ -10,7 +10,7 @@ export const EROWS = 2 * ROWS + 1; // 19
 export const CELL_SIZE = 24;
 
 /** HUD height in pixels */
-export const HUD_HEIGHT = 32;
+export const HUD_HEIGHT = 40;
 
 /** Vertical offset: maze is drawn below the HUD */
 export const MAZE_Y = HUD_HEIGHT;

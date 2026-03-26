@@ -59,4 +59,6 @@ VS Code: `Ctrl+Shift+B` runs the build task.
 Ported from a ZX Spectrum game written in C. Original source: https://github.com/ipalopezhentsev/zxspectrum-games
 
 ## Bugs
-- in demo: after opening exit, if time permits, try to grab as much coins as possible before going to exit to maximize score
+
+## TODO
+- add new mode where we see just a window from complete maze, with larger sprites
