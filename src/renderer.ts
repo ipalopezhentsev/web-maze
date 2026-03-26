@@ -282,6 +282,7 @@ export function drawHud(
  * Ignores line.size — uses fixed pixel-font sizes to match retro aesthetic.
  */
 export function drawOverlay(ctx: CanvasRenderingContext2D, lines: Array<{ text: string; color: string; size: number }>): void {
+  const margin = 20;
   const BORDER = 6;
   const BANNER_H = 5 * CELL_SIZE; // 120 px
   const bannerY = MAZE_Y + Math.floor((EROWS * CELL_SIZE - BANNER_H) / 2);
@@ -293,11 +294,11 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, lines: Array<{ text: 
 
   // Yellow outer border
   ctx.fillStyle = '#FFFF00';
-  ctx.fillRect(0, bannerY, CANVAS_WIDTH, BANNER_H);
+  ctx.fillRect(margin, bannerY, CANVAS_WIDTH - margin * 2, BANNER_H);
 
   // Coloured paper interior
   ctx.fillStyle = paperColor;
-  ctx.fillRect(BORDER, bannerY + BORDER, CANVAS_WIDTH - BORDER * 2, BANNER_H - BORDER * 2);
+  ctx.fillRect(BORDER + margin, bannerY + BORDER, CANVAS_WIDTH - (BORDER + margin) * 2, BANNER_H - BORDER * 2);
 
   // Text layout
   const TITLE_SIZE = 16;
@@ -372,11 +373,6 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
   ctx.textBaseline = 'middle';
   const cx = CANVAS_WIDTH / 2;
 
-  // Title
-  ctx.fillStyle = COLOR.GEM;
-  ctx.font = "18px 'Press Start 2P', monospace";
-  ctx.fillText('MAZE RUNNER', cx, 40);
-
   // --- The Cast ---
   ctx.fillStyle = COLOR.GEM;
   ctx.font = "11px 'Press Start 2P', monospace";
@@ -412,9 +408,6 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
 
   // Controls
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#888888';
-  ctx.font = "9px 'Press Start 2P', monospace";
-  ctx.fillText('Arrow keys = move    Ctrl = fire gun', cx, 275);
 
   // Difficulty selection
   ctx.fillStyle = COLOR.HUD_TEXT;
