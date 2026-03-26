@@ -69,3 +69,4 @@ Ported from a ZX Spectrum game written in C. Original source: https://github.com
 ![alt text](image-2.png)
 - in demo: after opening exit, if time permits, try to grab as much coins as possible before going to exit to maximize score
 - why enemies are not like player and like rhombs?
+- scale only by non-fractional numbers
