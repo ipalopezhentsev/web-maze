@@ -143,6 +143,24 @@ header {
 .mute-btn:hover { background: var(--zx-blue); }
 .mute-btn.muted { color: var(--zx-white); border-color: var(--zx-white); }
 
+/* FULLSCREEN BUTTON */
+.fullscreen-btn {
+  display: block;
+  width: 100%;
+  background: var(--zx-black);
+  border: 2px solid var(--zx-bwhite);
+  color: var(--zx-bwhite);
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(8px, 1vw, 11px);
+  padding: 8px 12px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-align: center;
+  margin-top: 6px;
+}
+.fullscreen-btn:hover { background: var(--zx-blue); }
+.fullscreen-btn.active { color: var(--zx-bgreen); border-color: var(--zx-bgreen); }
+
 /* CONTROLS BOX */
 .controls {
   background: var(--zx-black);

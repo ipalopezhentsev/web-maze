@@ -54,6 +54,23 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') { toggleMute(); syncMuteBtn(); }
 });
 
+// ─── Fullscreen button ───
+const fsBtn = document.getElementById('fullscreen-btn') as HTMLButtonElement;
+function syncFsBtn(): void {
+  const active = !!document.fullscreenElement;
+  fsBtn.textContent = active ? '[ FULLSCREEN: ON  ]' : '[ FULLSCREEN: OFF ]';
+  fsBtn.classList.toggle('active', active);
+}
+syncFsBtn();
+fsBtn.addEventListener('click', () => {
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  } else {
+    document.documentElement.requestFullscreen();
+  }
+});
+document.addEventListener('fullscreenchange', syncFsBtn);
+
 // ─── Game state ───
 const Phase = { Menu: 0, Playing: 1, LevelWon: 2, GameOver: 3, HiScores: 4, Presenting: 5, NameEntry: 6 } as const;
 type Phase = (typeof Phase)[keyof typeof Phase];
