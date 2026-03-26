@@ -27,6 +27,35 @@ export interface EnemiesContext {
   chasePct: number;
 }
 
+/** Minimum BFS distance (expanded grid steps) an enemy must be from the player at spawn. */
+const MIN_ENEMY_DIST = 8;
+
+/**
+ * BFS from (startGx, startGy) on the wallmap.
+ * Returns a Uint16Array where dist[gy * ECOLS + gx] = BFS distance from start
+ * (0 at start, 0xFFFF = unreachable).
+ */
+export function bfsDistances(startGx: number, startGy: number, wallmap: Uint8Array): Uint16Array {
+  const dist = new Uint16Array(EROWS * ECOLS).fill(0xFFFF);
+  const queue = new Uint16Array(EROWS * ECOLS);
+  let head = 0, tail = 0;
+  const startIdx = startGy * ECOLS + startGx;
+  dist[startIdx] = 0;
+  queue[tail++] = startIdx;
+
+  while (head < tail) {
+    const ci = queue[head++];
+    const d = dist[ci] + 1;
+    const gx = ci % ECOLS;
+    const gy = (ci / ECOLS) | 0;
+    if (gx > 0)        { const ni = ci - 1;     if (!wallmap[ni] && dist[ni] === 0xFFFF) { dist[ni] = d; queue[tail++] = ni; } }
+    if (gx < ECOLS-1)  { const ni = ci + 1;     if (!wallmap[ni] && dist[ni] === 0xFFFF) { dist[ni] = d; queue[tail++] = ni; } }
+    if (gy > 0)        { const ni = ci - ECOLS;  if (!wallmap[ni] && dist[ni] === 0xFFFF) { dist[ni] = d; queue[tail++] = ni; } }
+    if (gy < EROWS-1)  { const ni = ci + ECOLS;  if (!wallmap[ni] && dist[ni] === 0xFFFF) { dist[ni] = d; queue[tail++] = ni; } }
+  }
+  return dist;
+}
+
 export function createEnemies(
   count: number,
   playerGx: number,
@@ -36,31 +65,67 @@ export function createEnemies(
   enemyFrames: number,
   chasePct: number,
   cellSize: number,
+  wallmap: Uint8Array,
 ): EnemiesContext {
   const enemies: EnemyState[] = [];
   const usedPositions = new Set<string>();
   usedPositions.add(`${playerGx},${playerGy}`);
   usedPositions.add(`${exitGx},${exitGy}`);
 
-  for (let i = 0; i < count; i++) {
-    let gx: number, gy: number;
-    do {
-      const cx = (Math.random() * COLS) | 0;
-      const cy = (Math.random() * ROWS) | 0;
-      gx = cx * 2 + 1;
-      gy = cy * 2 + 1;
-    } while (usedPositions.has(`${gx},${gy}`));
-    usedPositions.add(`${gx},${gy}`);
+  // Precompute BFS distances from player for safe placement
+  const distFromPlayer = bfsDistances(playerGx, playerGy, wallmap);
 
-    enemies.push({
-      gx, gy,
-      px: gx * cellSize,
-      py: gy * cellSize,
-      anim: 0,
-      dir: Direction.Down,
-      walk: 0,
-      stunFrames: 0,
-    });
+  // Build candidate pools: [far = ≥ MIN_ENEMY_DIST, near = any reachable cell center]
+  const farCandidates: Array<[number, number]> = [];
+  const nearCandidates: Array<[number, number]> = [];
+  for (let cy = 0; cy < ROWS; cy++) {
+    for (let cx = 0; cx < COLS; cx++) {
+      const gx = cx * 2 + 1;
+      const gy = cy * 2 + 1;
+      const key = `${gx},${gy}`;
+      if (key === `${playerGx},${playerGy}`) continue;
+      if (key === `${exitGx},${exitGy}`) continue;
+      const d = distFromPlayer[gy * ECOLS + gx];
+      if (d === 0xFFFF) continue; // unreachable
+      nearCandidates.push([gx, gy]);
+      if (d >= MIN_ENEMY_DIST) farCandidates.push([gx, gy]);
+    }
+  }
+
+  // Shuffle helpers (Fisher-Yates)
+  function shuffle<T>(arr: T[]): T[] {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  shuffle(farCandidates);
+  shuffle(nearCandidates);
+
+  for (let i = 0; i < count; i++) {
+    // Prefer a far candidate; fall back to near if pool is exhausted
+    let placed = false;
+    for (const pool of [farCandidates, nearCandidates]) {
+      while (pool.length > 0) {
+        const [gx, gy] = pool.pop()!;
+        if (usedPositions.has(`${gx},${gy}`)) continue;
+        usedPositions.add(`${gx},${gy}`);
+        enemies.push({
+          gx, gy,
+          px: gx * cellSize,
+          py: gy * cellSize,
+          anim: 0,
+          dir: Direction.Down,
+          walk: 0,
+          stunFrames: 0,
+        });
+        placed = true;
+        break;
+      }
+      if (placed) break;
+    }
   }
 
   return {

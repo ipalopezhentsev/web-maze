@@ -1,5 +1,5 @@
 import './style.css';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, CELL_SIZE, FPS, DIFFICULTIES, COLS, ECOLS, EROWS } from './constants.ts';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, CELL_SIZE, FPS, DIFFICULTIES, COLS, ECOLS, EROWS, DIR_DX, DIR_DY } from './constants.ts';
 import { generateMaze } from './maze.ts';
 import {
   drawMaze, drawPlayer, drawItems, drawEnemy, drawShotLine, eraseShotLine,
@@ -9,7 +9,7 @@ import { initInput, getDirection, isFirePressed } from './input.ts';
 import { createPlayer, updatePlayer } from './player.ts';
 import { initGems, tryCollectGem, tryCollectGun } from './gems.ts';
 import type { GemsState } from './gems.ts';
-import { createEnemies, updateEnemies, fireGun, bfsChase } from './enemy.ts';
+import { createEnemies, updateEnemies, fireGun, bfsChase, bfsDistances } from './enemy.ts';
 import type { EnemiesContext } from './enemy.ts';
 import { Direction } from './types.ts';
 import type { MazeData } from './types.ts';
@@ -54,6 +54,7 @@ let prevEnemyPy: number[];
 let shotPath: Array<{ gx: number; gy: number }> | null;
 let shotTimer: number;
 let firePrev: boolean;
+let demoFireRequest = false;
 
 // Overlay pause (frames to show win/lose message before returning to menu or next level)
 let overlayTimer = 0;
@@ -76,6 +77,7 @@ function startLevel(): void {
     numEnemies, player.gx, player.gy,
     gems.exitGx, gems.exitGy,
     enemyFrames, chasePct, CELL_SIZE,
+    maze.wallmap,
   );
 
   timerSec = timeLimit;
@@ -112,14 +114,88 @@ function startDemo(): void {
 }
 
 /**
- * Forward BFS from player, encoding first-step direction in vis[].
- * Returns the direction of the first step toward the nearest gem by actual
- * path distance (not Manhattan), or toward the exit once it's open.
- * vis values: 0=unvisited, 1-4=first-step direction+1, 5=start cell.
+ * Demo AI direction.
+ *
+ * When any non-stunned enemy is within DANGER_THRESHOLD expanded-grid steps,
+ * flee: pick the move that maximises the minimum BFS distance to any enemy.
+ * Also sets demoFireRequest if an enemy is in the player's current facing
+ * direction within line-of-sight (so the demo uses the gun).
+ *
+ * Outside of danger, do the original gem-seeking BFS (or head for the exit
+ * once it is open).
  */
+const DEMO_DANGER_THRESHOLD = 12; // ~6 maze cells
+
 function getDemoDirection(): Direction | -1 {
+  const wallmap = maze.wallmap;
+
+  // Active (non-stunned) enemies
+  const active = enemyCtx.enemies.filter(e => e.stunFrames === 0);
+
+  // Build one BFS distance map per active enemy
+  const distMaps = active.map(e => bfsDistances(e.gx, e.gy, wallmap));
+
+  // Minimum enemy distance at the player's current position
+  const playerIdx = player.gy * ECOLS + player.gx;
+  let minEnemyDist = 0xFFFF;
+  for (const dm of distMaps) {
+    if (dm[playerIdx] < minEnemyDist) minEnemyDist = dm[playerIdx];
+  }
+
+  // Demo gun: fire if an enemy is in the player's current facing direction
+  demoFireRequest = false;
+  if (gems.hasGun && (player.gx & 1) && (player.gy & 1)) {
+    const ddx = DIR_DX[player.dir];
+    const ddy = DIR_DY[player.dir];
+    let gx = player.gx;
+    let gy = player.gy;
+    for (let steps = 0; steps < ECOLS; steps++) {
+      gx += ddx;
+      gy += ddy;
+      if (gx < 0 || gx >= ECOLS || gy < 0 || gy >= EROWS) break;
+      if (wallmap[gy * ECOLS + gx]) break;
+      if (active.some(e => e.gx === gx && e.gy === gy)) {
+        demoFireRequest = true;
+        break;
+      }
+    }
+  }
+
+  // Flee when an enemy is dangerously close.
+  // Find the globally safest cell (highest min-enemy-distance across the whole
+  // maze) and use BFS to path toward it.  A single consistent destination
+  // prevents the local-greedy loops that occur when scoring by nearby cells.
+  if (active.length > 0 && minEnemyDist <= DEMO_DANGER_THRESHOLD) {
+    let bestSafety = -1;
+    let targetGx = player.gx;
+    let targetGy = player.gy;
+
+    for (let gy = 0; gy < EROWS; gy++) {
+      for (let gx = 0; gx < ECOLS; gx++) {
+        const i = gy * ECOLS + gx;
+        if (wallmap[i]) continue;
+        let minD = 0xFFFF;
+        for (const dm of distMaps) {
+          if (dm[i] < minD) minD = dm[i];
+        }
+        if (minD > bestSafety) {
+          bestSafety = minD;
+          targetGx = gx;
+          targetGy = gy;
+        }
+      }
+    }
+
+    if (targetGx !== player.gx || targetGy !== player.gy) {
+      const dir = bfsChase(player.gx, player.gy, targetGx, targetGy, wallmap);
+      if (dir !== -1) return dir;
+    }
+  }
+
+  // Normal gem-seeking: forward BFS from player, first-step direction toward
+  // nearest gem by path distance, or toward the exit once it is open.
   if (gems.exitOpen) {
-    return bfsChase(player.gx, player.gy, gems.exitGx, gems.exitGy, maze.wallmap);
+    return bfsChase(player.gx, player.gy, gems.exitGx, gems.exitGy, wallmap);
   }
 
   const totalCells = EROWS * ECOLS;
@@ -136,21 +212,17 @@ function getDemoDirection(): Direction | -1 {
     const gx = ci % ECOLS;
     const gy = (ci / ECOLS) | 0;
 
-    // Found a gem cell — vis[ci] encodes the first step from the player
     if (ci !== startIdx && (gx & 1) && (gy & 1) && gems.gemmap[(gy >> 1) * COLS + (gx >> 1)]) {
       return (vis[ci] - 1) as Direction;
     }
 
-    // Propagate: cells adjacent to start get their direction as the first step;
-    // all other cells inherit the first-step direction from their parent.
-    if (gx > 0) { const ni = ci - 1; if (!vis[ni] && !maze.wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Left + 1 : vis[ci]; queue[tail++] = ni; } }
-    if (gx < ECOLS - 1) { const ni = ci + 1; if (!vis[ni] && !maze.wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Right + 1 : vis[ci]; queue[tail++] = ni; } }
-    if (gy > 0) { const ni = ci - ECOLS; if (!vis[ni] && !maze.wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Up + 1 : vis[ci]; queue[tail++] = ni; } }
-    if (gy < EROWS - 1) { const ni = ci + ECOLS; if (!vis[ni] && !maze.wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Down + 1 : vis[ci]; queue[tail++] = ni; } }
+    if (gx > 0)        { const ni = ci - 1;     if (!vis[ni] && !wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Left  + 1 : vis[ci]; queue[tail++] = ni; } }
+    if (gx < ECOLS-1)  { const ni = ci + 1;     if (!vis[ni] && !wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Right + 1 : vis[ci]; queue[tail++] = ni; } }
+    if (gy > 0)        { const ni = ci - ECOLS;  if (!vis[ni] && !wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Up    + 1 : vis[ci]; queue[tail++] = ni; } }
+    if (gy < EROWS-1)  { const ni = ci + ECOLS;  if (!vis[ni] && !wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Down  + 1 : vis[ci]; queue[tail++] = ni; } }
   }
 
-  // No gem reachable — head toward exit
-  return bfsChase(player.gx, player.gy, gems.exitGx, gems.exitGy, maze.wallmap);
+  return bfsChase(player.gx, player.gy, gems.exitGx, gems.exitGy, wallmap);
 }
 
 // ─── Input helpers for menu ───
@@ -319,7 +391,7 @@ function tickPlaying(): void {
   }
 
   // Fire gun
-  const fireNow = isDemo ? false : isFirePressed();
+  const fireNow = isDemo ? demoFireRequest : isFirePressed();
   if (fireNow && !firePrev && gems.hasGun && !shotPath) {
     gems.hasGun = false;
     sndShot();
