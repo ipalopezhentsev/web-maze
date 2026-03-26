@@ -1,5 +1,5 @@
 import './style.css';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, CELL_SIZE, FPS, DIFFICULTIES } from './constants.ts';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, CELL_SIZE, FPS, DIFFICULTIES, COLS, ECOLS, EROWS } from './constants.ts';
 import { generateMaze } from './maze.ts';
 import {
   drawMaze, drawPlayer, drawItems, drawEnemy, drawShotLine, eraseShotLine,
@@ -9,8 +9,9 @@ import { initInput, getDirection, isFirePressed } from './input.ts';
 import { createPlayer, updatePlayer } from './player.ts';
 import { initGems, tryCollectGem, tryCollectGun } from './gems.ts';
 import type { GemsState } from './gems.ts';
-import { createEnemies, updateEnemies, fireGun } from './enemy.ts';
+import { createEnemies, updateEnemies, fireGun, bfsChase } from './enemy.ts';
 import type { EnemiesContext } from './enemy.ts';
+import { Direction } from './types.ts';
 import type { MazeData } from './types.ts';
 import type { PlayerState } from './player.ts';
 import { initSound, sndGem, sndGunPickup, sndShot, sndShotHit, sndExitOpen, sndCaught, sndWin, sndTimeUp } from './sound.ts';
@@ -32,6 +33,9 @@ type Phase = (typeof Phase)[keyof typeof Phase];
 let phase: Phase = Phase.Menu;
 let menuCursor = 1; // default Normal
 let difficulty = 1;
+let isDemo = false;
+let menuIdleFrames = 0;
+const DEMO_IDLE_FRAMES = FPS * 8; // 8 s of menu inactivity starts demo
 let level = 1;
 let score = 0;
 
@@ -98,6 +102,57 @@ function startLevel(): void {
   phase = Phase.Playing;
 }
 
+function startDemo(): void {
+  isDemo = true;
+  difficulty = 1;
+  level = 1;
+  score = 0;
+  initSound();
+  startLevel();
+}
+
+/**
+ * Forward BFS from player, encoding first-step direction in vis[].
+ * Returns the direction of the first step toward the nearest gem by actual
+ * path distance (not Manhattan), or toward the exit once it's open.
+ * vis values: 0=unvisited, 1-4=first-step direction+1, 5=start cell.
+ */
+function getDemoDirection(): Direction | -1 {
+  if (gems.exitOpen) {
+    return bfsChase(player.gx, player.gy, gems.exitGx, gems.exitGy, maze.wallmap);
+  }
+
+  const totalCells = EROWS * ECOLS;
+  const startIdx = player.gy * ECOLS + player.gx;
+  const vis = new Uint8Array(totalCells);
+  const queue = new Uint16Array(totalCells);
+  let head = 0, tail = 0;
+
+  vis[startIdx] = 5;
+  queue[tail++] = startIdx;
+
+  while (head < tail) {
+    const ci = queue[head++];
+    const gx = ci % ECOLS;
+    const gy = (ci / ECOLS) | 0;
+
+    // Found a gem cell — vis[ci] encodes the first step from the player
+    if (ci !== startIdx && (gx & 1) && (gy & 1) && gems.gemmap[(gy >> 1) * COLS + (gx >> 1)]) {
+      return (vis[ci] - 1) as Direction;
+    }
+
+    // Propagate: cells adjacent to start get their direction as the first step;
+    // all other cells inherit the first-step direction from their parent.
+    if (gx > 0) { const ni = ci - 1; if (!vis[ni] && !maze.wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Left + 1 : vis[ci]; queue[tail++] = ni; } }
+    if (gx < ECOLS - 1) { const ni = ci + 1; if (!vis[ni] && !maze.wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Right + 1 : vis[ci]; queue[tail++] = ni; } }
+    if (gy > 0) { const ni = ci - ECOLS; if (!vis[ni] && !maze.wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Up + 1 : vis[ci]; queue[tail++] = ni; } }
+    if (gy < EROWS - 1) { const ni = ci + ECOLS; if (!vis[ni] && !maze.wallmap[ni]) { vis[ni] = vis[ci] === 5 ? Direction.Down + 1 : vis[ci]; queue[tail++] = ni; } }
+  }
+
+  // No gem reachable — head toward exit
+  return bfsChase(player.gx, player.gy, gems.exitGx, gems.exitGy, maze.wallmap);
+}
+
 // ─── Input helpers for menu ───
 let prevUp = false;
 let prevDown = false;
@@ -133,7 +188,9 @@ function tick(): void {
   } else if (phase === Phase.LevelWon || phase === Phase.GameOver) {
     overlayTimer--;
     if (overlayTimer <= 0) {
-      if (phase === Phase.LevelWon) {
+      if (isDemo) {
+        startDemo();
+      } else if (phase === Phase.LevelWon) {
         level++;
         startLevel();
       } else {
@@ -156,10 +213,12 @@ function tickMenu(): void {
 
   if (upNow && !prevUp && menuCursor > 0) {
     menuCursor--;
+    menuIdleFrames = 0;
     drawMenu(ctx2d, menuCursor, DIFFICULTIES.map(d => d.name));
   }
   if (downNow && !prevDown && menuCursor < DIFFICULTIES.length - 1) {
     menuCursor++;
+    menuIdleFrames = 0;
     drawMenu(ctx2d, menuCursor, DIFFICULTIES.map(d => d.name));
   }
   if (enterNow && !prevEnter) {
@@ -167,16 +226,38 @@ function tickMenu(): void {
     difficulty = menuCursor;
     level = 1;
     score = 0;
+    isDemo = false;
+    menuIdleFrames = 0;
     startLevel();
   }
 
   prevUp = upNow;
   prevDown = downNow;
   prevEnter = enterNow;
+
+  // Start demo after idle
+  if (_pressedKeys.size === 0) {
+    menuIdleFrames++;
+    if (menuIdleFrames >= DEMO_IDLE_FRAMES) {
+      menuIdleFrames = 0;
+      startDemo();
+    }
+  } else {
+    menuIdleFrames = 0;
+  }
 }
 
 function tickPlaying(): void {
   frameCount++;
+
+  // Cancel demo on any key press
+  if (isDemo && _pressedKeys.size > 0) {
+    isDemo = false;
+    menuIdleFrames = 0;
+    phase = Phase.Menu;
+    drawMenu(ctx2d, menuCursor, DIFFICULTIES.map(d => d.name));
+    return;
+  }
 
   // Timer countdown
   timerFrac++;
@@ -208,7 +289,7 @@ function tickPlaying(): void {
   }
 
   // Player movement
-  const dir = getDirection();
+  const dir = isDemo ? getDemoDirection() : getDirection();
   const arrivedAtCell = updatePlayer(player, dir, maze, CELL_SIZE);
 
   if (arrivedAtCell) {
@@ -238,7 +319,7 @@ function tickPlaying(): void {
   }
 
   // Fire gun
-  const fireNow = isFirePressed();
+  const fireNow = isDemo ? false : isFirePressed();
   if (fireNow && !firePrev && gems.hasGun && !shotPath) {
     gems.hasGun = false;
     sndShot();
@@ -297,6 +378,19 @@ function tickPlaying(): void {
   // Update HUD
   const gemsToGo = Math.max(0, gems.gemsNeeded - gems.gemsCollected);
   drawHud(ctx2d, score, level, gemsToGo, timerSec, gems.hasGun, timerSec <= 10);
+
+  // Demo label
+  if (isDemo) {
+    ctx2d.save();
+    ctx2d.font = 'bold 18px monospace';
+    ctx2d.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx2d.fillRect(CANVAS_WIDTH - 74, 5, 68, 22);
+    ctx2d.fillStyle = '#FFFF00';
+    ctx2d.textAlign = 'right';
+    ctx2d.textBaseline = 'top';
+    ctx2d.fillText('DEMO', CANVAS_WIDTH - 6, 6);
+    ctx2d.restore();
+  }
 }
 
 function tickHiScores(): void {

@@ -5,7 +5,8 @@
       "Bash(curl -sL \"https://raw.githubusercontent.com/ipalopezhentsev/zxspectrum-games/master/maze.c\")",
       "Bash(curl -sL \"https://raw.githubusercontent.com/ipalopezhentsev/zxspectrum-games/master/maze.c\" -o /c/Users/ilyap/dev/web-maze/maze_original.c)",
       "Bash(npx tsc:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

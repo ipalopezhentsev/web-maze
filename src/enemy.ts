@@ -80,7 +80,7 @@ export function createEnemies(
  * Runs BFS from the player position outward. When it reaches the enemy,
  * the stored direction tells the enemy which way to go.
  */
-function bfsChase(
+export function bfsChase(
   enemyGx: number, enemyGy: number,
   playerGx: number, playerGy: number,
   wallmap: Uint8Array,
