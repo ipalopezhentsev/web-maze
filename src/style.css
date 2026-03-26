@@ -125,9 +125,26 @@ header {
 #game {
   display: block;
   image-rendering: pixelated;
-  height: clamp(488px, calc(100vh - 280px), 732px);
-  width: auto;
+  aspect-ratio: 696 / 488;
+  max-width: calc(100vw - 32px); /* safety: never overflow viewport */
 }
+
+/* MUTE BUTTON */
+.mute-btn {
+  display: block;
+  width: 100%;
+  background: var(--zx-black);
+  border: 2px solid var(--zx-bwhite);
+  color: var(--zx-bwhite);
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(8px, 1vw, 11px);
+  padding: 8px 12px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-align: center;
+}
+.mute-btn:hover { background: var(--zx-blue); }
+.mute-btn.muted { color: var(--zx-white); border-color: var(--zx-white); }
 
 /* CONTROLS BOX */
 .controls {

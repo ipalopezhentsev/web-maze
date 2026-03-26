@@ -3,6 +3,15 @@
  * replicating the ZX Spectrum bit_beep style.
  */
 
+let soundMuted = localStorage.getItem('mazeMuted') === '1';
+
+export function isMuted(): boolean { return soundMuted; }
+
+export function toggleMute(): void {
+  soundMuted = !soundMuted;
+  localStorage.setItem('mazeMuted', soundMuted ? '1' : '0');
+}
+
 let audioCtx: AudioContext | null = null;
 
 function getCtx(): AudioContext {
@@ -34,15 +43,43 @@ function beep(freq: number, duration: number, startTime?: number): void {
   osc.stop(t + duration);
 }
 
-export function sndStep(): void {
-  beep(800, 0.02);
+export function sndStep(walk: number): void {
+  if (soundMuted) return;
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  const duration = 0.025;
+  const samples = Math.ceil(ctx.sampleRate * duration);
+
+  const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < samples; i++) data[i] = Math.random() * 2 - 1;
+
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+
+  // Highpass to cut rumble, keep crack
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'highpass';
+  filter.frequency.value = walk === 0 ? 1800 : 2200;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.25, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  source.start(t);
+  source.stop(t + duration);
 }
 
 export function sndBump(): void {
+  if (soundMuted) return;
   beep(200, 0.02);
 }
 
 export function sndGem(): void {
+  if (soundMuted) return;
   const ctx = getCtx();
   const t = ctx.currentTime;
   beep(1200, 0.04, t);
@@ -50,6 +87,7 @@ export function sndGem(): void {
 }
 
 export function sndGunPickup(): void {
+  if (soundMuted) return;
   const ctx = getCtx();
   const t = ctx.currentTime;
   beep(1000, 0.03, t);
@@ -58,6 +96,7 @@ export function sndGunPickup(): void {
 }
 
 export function sndShot(): void {
+  if (soundMuted) return;
   const ctx = getCtx();
   const t = ctx.currentTime;
   beep(2000, 0.03, t);
@@ -66,6 +105,7 @@ export function sndShot(): void {
 }
 
 export function sndShotHit(): void {
+  if (soundMuted) return;
   const ctx = getCtx();
   const t = ctx.currentTime;
   beep(600, 0.1, t);
@@ -73,6 +113,7 @@ export function sndShotHit(): void {
 }
 
 export function sndExitOpen(): void {
+  if (soundMuted) return;
   const ctx = getCtx();
   const t = ctx.currentTime;
   beep(600, 0.08, t);
@@ -81,6 +122,7 @@ export function sndExitOpen(): void {
 }
 
 export function sndCaught(): void {
+  if (soundMuted) return;
   const ctx = getCtx();
   const t = ctx.currentTime;
   beep(400, 0.12, t);
@@ -89,6 +131,7 @@ export function sndCaught(): void {
 }
 
 export function sndWin(): void {
+  if (soundMuted) return;
   const ctx = getCtx();
   const t = ctx.currentTime;
   beep(800, 0.1, t);
@@ -96,7 +139,39 @@ export function sndWin(): void {
   beep(1400, 0.2, t + 0.2);
 }
 
+export function sndThump(): void {
+  if (soundMuted) return;
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  const duration = 0.12;
+  const samples = Math.ceil(ctx.sampleRate * duration);
+
+  // Sub-bass thud: noise shaped by lowpass
+  const buffer = ctx.createBuffer(1, samples, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < samples; i++) data[i] = Math.random() * 2 - 1;
+
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(1200, t);
+  filter.frequency.exponentialRampToValueAtTime(80, t + duration);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(1.0, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  source.start(t);
+  source.stop(t + duration);
+}
+
 export function sndTimeUp(): void {
+  if (soundMuted) return;
   const ctx = getCtx();
   const t = ctx.currentTime;
   beep(500, 0.15, t);

@@ -262,7 +262,7 @@ export function drawHud(
 
   // Gems to go
   ctx.fillStyle = COLOR.GEM;
-  ctx.fillText(`GEMS:${gemsToGo}`, 310, y);
+  ctx.fillText(`GEMS TO GO:${gemsToGo}`, 310, y);
 
   // Gun indicator
   if (hasGun) {
@@ -274,6 +274,7 @@ export function drawHud(
   ctx.fillStyle = timerWarn ? COLOR.TIMER_WARN : COLOR.HUD_TEXT;
   ctx.textAlign = 'right';
   ctx.fillText(`TIME:${String(timerSec).padStart(3, ' ')}`, CANVAS_WIDTH - 8, y);
+
 }
 
 /**
@@ -436,6 +437,7 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
   ctx.fillStyle = '#888888';
   ctx.font = "9px 'Press Start 2P', monospace";
   ctx.fillText('Up/Down to select, Enter to start', cx, CANVAS_HEIGHT - 10);
+
 }
 
 /** Cache: attrColor → { wall: ImageData, floor: ImageData } — avoids re-allocating per cell per frame */
@@ -525,9 +527,47 @@ export function drawPresentHud(ctx: CanvasRenderingContext2D, score: number, lev
 /**
  * Draw the high scores screen.
  */
+export function drawNameEntry(
+  ctx: CanvasRenderingContext2D,
+  rank: number,
+  score: number,
+  currentText: string,
+  tick: number,
+): void {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  const cx = CANVAS_WIDTH / 2;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle = COLOR.GEM;
+  ctx.font = "16px 'Press Start 2P', monospace";
+  ctx.fillText('HIGH SCORE!', cx, 90);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = "11px 'Press Start 2P', monospace";
+  ctx.fillText(`RANK #${rank + 1}   SCORE: ${String(score).padStart(6, '0')}`, cx, 150);
+
+  ctx.fillStyle = '#AAAAAA';
+  ctx.font = "10px 'Press Start 2P', monospace";
+  ctx.fillText('ENTER YOUR NAME:', cx, 230);
+
+  // Name with blinking cursor
+  const cursor = (tick >> 2) & 1 ? '_' : ' ';
+  const nameDisplay = (currentText || '') + cursor;
+  ctx.fillStyle = COLOR.PLAYER;
+  ctx.font = "14px 'Press Start 2P', monospace";
+  ctx.fillText(nameDisplay.toUpperCase(), cx, 280);
+
+  ctx.fillStyle = '#888888';
+  ctx.font = "10px 'Press Start 2P', monospace";
+  ctx.fillText('PRESS ENTER TO CONFIRM', cx, CANVAS_HEIGHT - 40);
+}
+
 export function drawHighScores(
   ctx: CanvasRenderingContext2D,
-  scores: Array<{ score: number; level: number }>,
+  scores: Array<{ score: number; level: number; name: string }>,
   newRank: number,
 ): void {
   ctx.fillStyle = '#000';
@@ -550,10 +590,11 @@ export function drawHighScores(
     ctx.fillStyle = (i === newRank) ? COLOR.PLAYER : COLOR.GEM;
 
     if (entry.score === 0) {
-      ctx.fillText(`${i + 1}.  ------`, cx, y);
+      ctx.fillText(`${i + 1}.  ----------`, cx, y);
     } else {
       const scoreStr = String(entry.score).padStart(6, '0');
-      ctx.fillText(`${i + 1}.  ${scoreStr}   Level ${entry.level}`, cx, y);
+      const name = (entry.name || '').substring(0, 10).toUpperCase().padEnd(10, ' ');
+      ctx.fillText(`${i + 1}. ${name}  ${scoreStr}  L${entry.level}`, cx, y);
     }
   }
 

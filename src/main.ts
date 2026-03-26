@@ -4,9 +4,9 @@ import { generateMaze } from './maze.ts';
 import {
   drawMaze, drawPlayer, drawItems, drawEnemy, drawShotLine, eraseShotLine,
   eraseTiles, redrawItemsNear, drawHud, drawOverlay, drawMenu, drawHighScores,
-  drawPresentHud, drawCellAttr, drawSpritesAtCellAttr,
+  drawNameEntry, drawPresentHud, drawCellAttr, drawSpritesAtCellAttr,
 } from './renderer.ts';
-import { initInput, getDirection, isFirePressed } from './input.ts';
+import { initInput, getDirection, isFirePressed, startTextInput, stopTextInput, drainTextInput } from './input.ts';
 import { createPlayer, updatePlayer } from './player.ts';
 import { initGems, tryCollectGem, tryCollectGun } from './gems.ts';
 import type { GemsState } from './gems.ts';
@@ -15,8 +15,8 @@ import type { EnemiesContext } from './enemy.ts';
 import { Direction } from './types.ts';
 import type { MazeData } from './types.ts';
 import type { PlayerState } from './player.ts';
-import { initSound, sndGem, sndGunPickup, sndShot, sndShotHit, sndExitOpen, sndCaught, sndWin, sndTimeUp } from './sound.ts';
-import { loadHiScores, getHiScores, updateHiScores } from './hiscore.ts';
+import { initSound, isMuted, toggleMute, sndStep, sndThump, sndGem, sndGunPickup, sndShot, sndShotHit, sndExitOpen, sndCaught, sndWin, sndTimeUp } from './sound.ts';
+import { loadHiScores, getHiScores, updateHiScores, loadPlayerName, savePlayerName } from './hiscore.ts';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 canvas.width = CANVAS_WIDTH;
@@ -25,10 +25,37 @@ canvas.height = CANVAS_HEIGHT;
 const ctx2d = canvas.getContext('2d')!;
 ctx2d.imageSmoothingEnabled = false;
 
+function scaleCanvas(): void {
+  const isWide = window.innerWidth > 900;
+  const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
+  const sidebarW = isWide && sidebar ? sidebar.offsetWidth + 24 : 0; // 24 = flex gap
+  const header = document.querySelector('header') as HTMLElement | null;
+  const footer = document.querySelector('footer') as HTMLElement | null;
+  const availW = window.innerWidth - 64 - sidebarW; // 32 body padding + 32 shadow/breathing room
+  const availH = window.innerHeight - (header?.offsetHeight ?? 0) - (footer?.offsetHeight ?? 0) - 80;
+  const scale = Math.max(0.5, Math.min(availW / CANVAS_WIDTH, availH / CANVAS_HEIGHT, 3));
+  canvas.style.width = Math.floor(CANVAS_WIDTH * scale) + 'px';
+  // Height handled by CSS aspect-ratio: 696/488
+}
+window.addEventListener('resize', scaleCanvas);
+
 initInput();
 
+// ─── Mute button ───
+const muteBtn = document.getElementById('mute-btn') as HTMLButtonElement;
+function syncMuteBtn(): void {
+  const muted = isMuted();
+  muteBtn.textContent = muted ? '[ SOUND: OFF ]' : '[ SOUND: ON  ]';
+  muteBtn.classList.toggle('muted', muted);
+}
+syncMuteBtn();
+muteBtn.addEventListener('click', () => { toggleMute(); syncMuteBtn(); });
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM') { toggleMute(); syncMuteBtn(); }
+});
+
 // ─── Game state ───
-const Phase = { Menu: 0, Playing: 1, LevelWon: 2, GameOver: 3, HiScores: 4, Presenting: 5 } as const;
+const Phase = { Menu: 0, Playing: 1, LevelWon: 2, GameOver: 3, HiScores: 4, Presenting: 5, NameEntry: 6 } as const;
 type Phase = (typeof Phase)[keyof typeof Phase];
 
 let phase: Phase = Phase.Menu;
@@ -59,8 +86,16 @@ let demoFireRequest = false;
 
 // Overlay pause (frames to show win/lose message before returning to menu or next level)
 let overlayTimer = 0;
+let overlayKeyWait = false;
 let hiScoreRank = -1;
 let hiScoreKeyWait = false;
+
+// Name entry state
+let playerName = '';
+let nameEntryCurrent = '';
+let nameEntryTick = 0;
+let pendingScore = 0;
+let pendingLevel = 0;
 
 // Level presentation state – zooming attribute rectangle (ZX Spectrum style)
 type PresentRect = { left: number; top: number; right: number; bottom: number };
@@ -256,7 +291,7 @@ function tickPresenting(): void {
     presentRect = shrinkRect(presentRect, presentTarget);
     if (!rectAtTarget()) presentRect = shrinkRect(presentRect, presentTarget);
     drawRectBorder(presentRect, presentZoomColor());
-    if (rectAtTarget()) { presentZoomed = true; presentTimer = 0; }
+    if (rectAtTarget()) { presentZoomed = true; presentTimer = 0; sndThump(); }
   } else {
     // Hold: flash in the item's own colour, 4-frame blink period
     eraseRectBorder(presentRect);
@@ -431,6 +466,11 @@ function tick(): void {
   } else if (phase === Phase.Playing) {
     tickPlaying();
   } else if (phase === Phase.LevelWon || phase === Phase.GameOver) {
+    if (overlayKeyWait) {
+      if (_pressedKeys.size === 0) overlayKeyWait = false;
+    } else if (_pressedKeys.size > 0) {
+      overlayTimer = 0;
+    }
     overlayTimer--;
     if (overlayTimer <= 0) {
       if (isDemo) {
@@ -439,15 +479,31 @@ function tick(): void {
         level++;
         startLevel();
       } else {
-        // Game over → show high scores
-        hiScoreRank = updateHiScores(score, level);
-        drawHighScores(ctx2d, getHiScores(), hiScoreRank);
-        hiScoreKeyWait = true;
-        phase = Phase.HiScores;
+        // Game over → check if score qualifies; ask for name if needed
+        const qualifies = score > 0 && getHiScores().some(e => score > e.score);
+        if (qualifies && !playerName) {
+          // First time: ask for name
+          pendingScore = score;
+          pendingLevel = level;
+          nameEntryCurrent = '';
+          nameEntryTick = 0;
+          startTextInput();
+          // Show a temporary hi-score rank to display on name entry screen
+          hiScoreRank = getHiScores().findIndex(e => score > e.score);
+          drawNameEntry(ctx2d, hiScoreRank, score, nameEntryCurrent, nameEntryTick);
+          phase = Phase.NameEntry;
+        } else {
+          hiScoreRank = updateHiScores(score, level, playerName);
+          drawHighScores(ctx2d, getHiScores(), hiScoreRank);
+          hiScoreKeyWait = true;
+          phase = Phase.HiScores;
+        }
       }
     }
   } else if (phase === Phase.HiScores) {
     tickHiScores();
+  } else if (phase === Phase.NameEntry) {
+    tickNameEntry();
   }
 }
 
@@ -513,6 +569,7 @@ function tickPlaying(): void {
       sndTimeUp();
       phase = Phase.GameOver;
       overlayTimer = FPS * 3;
+      overlayKeyWait = true;
       drawOverlay(ctx2d, [
         { text: 'TIME UP!', color: '#FF0000', size: 48 },
         { text: `Score: ${score}`, color: '#FFFFFF', size: 24 },
@@ -538,6 +595,7 @@ function tickPlaying(): void {
   const arrivedAtCell = updatePlayer(player, dir, maze, CELL_SIZE);
 
   if (arrivedAtCell) {
+    sndStep(player.walk);
     const wasExitOpen = gems.exitOpen;
     if (tryCollectGem(gems, player.gx, player.gy)) {
       score += 10;
@@ -554,6 +612,7 @@ function tickPlaying(): void {
       sndWin();
       phase = Phase.LevelWon;
       overlayTimer = FPS * 2;
+      overlayKeyWait = true;
       drawOverlay(ctx2d, [
         { text: 'LEVEL COMPLETE!', color: '#00FF00', size: 48 },
         { text: `Gems: ${gems.gemsCollected}/${gems.totalGems}  Time bonus: ${timerSec * 5}`, color: '#FFFFFF', size: 20 },
@@ -584,6 +643,7 @@ function tickPlaying(): void {
     sndCaught();
     phase = Phase.GameOver;
     overlayTimer = FPS * 3;
+    overlayKeyWait = true;
     drawOverlay(ctx2d, [
       { text: 'CAUGHT!', color: '#FF0000', size: 48 },
       { text: `Score: ${score}`, color: '#FFFFFF', size: 24 },
@@ -650,9 +710,36 @@ function tickHiScores(): void {
   }
 }
 
+const MAX_NAME_LENGTH = 10;
+
+function tickNameEntry(): void {
+  nameEntryTick++;
+  for (const ch of drainTextInput()) {
+    if (ch === '\n') {
+      // Confirm name
+      stopTextInput();
+      const name = nameEntryCurrent.trim() || 'PLAYER';
+      playerName = name;
+      savePlayerName(name);
+      hiScoreRank = updateHiScores(pendingScore, pendingLevel, name);
+      drawHighScores(ctx2d, getHiScores(), hiScoreRank);
+      hiScoreKeyWait = true;
+      phase = Phase.HiScores;
+      return;
+    } else if (ch === '\b') {
+      nameEntryCurrent = nameEntryCurrent.slice(0, -1);
+    } else if (nameEntryCurrent.length < MAX_NAME_LENGTH) {
+      nameEntryCurrent += ch;
+    }
+  }
+  drawNameEntry(ctx2d, hiScoreRank, pendingScore, nameEntryCurrent, nameEntryTick);
+}
+
 // ─── Start ───
 loadHiScores();
+playerName = loadPlayerName();
 document.fonts.ready.then(() => {
+  scaleCanvas();
   drawMenu(ctx2d, menuCursor, DIFFICULTIES.map(d => d.name));
   requestAnimationFrame(gameLoop);
 });
