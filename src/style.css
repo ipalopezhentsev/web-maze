@@ -30,7 +30,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: 16px;
+  padding: 8px 16px;
   image-rendering: pixelated;
 }
 
@@ -53,7 +53,7 @@ body::after {
 /* TITLE */
 header {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 12px;
 }
 
 .title-bar {
@@ -125,6 +125,8 @@ header {
 #game {
   display: block;
   image-rendering: pixelated;
+  height: clamp(488px, calc(100vh - 280px), 732px);
+  width: auto;
 }
 
 /* CONTROLS BOX */

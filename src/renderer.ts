@@ -248,7 +248,7 @@ export function drawHud(
   ctx.fillStyle = COLOR.HUD_BG;
   ctx.fillRect(0, 0, CANVAS_WIDTH, HUD_HEIGHT);
 
-  ctx.font = 'bold 18px monospace';
+  ctx.font = "10px 'Press Start 2P', monospace";
   ctx.textBaseline = 'middle';
   const y = HUD_HEIGHT / 2;
 
@@ -373,12 +373,12 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
 
   // Title
   ctx.fillStyle = COLOR.GEM;
-  ctx.font = 'bold 48px monospace';
+  ctx.font = "18px 'Press Start 2P', monospace";
   ctx.fillText('MAZE RUNNER', cx, 40);
 
   // --- The Cast ---
   ctx.fillStyle = COLOR.GEM;
-  ctx.font = 'bold 18px monospace';
+  ctx.font = "11px 'Press Start 2P', monospace";
   ctx.fillText('--- The Cast ---', cx, 75);
 
   const castLeft = 140;
@@ -395,7 +395,7 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
   const castStartY = 95;
   const castSpacing = 28;
   ctx.textAlign = 'left';
-  ctx.font = '16px monospace';
+  ctx.font = "9px 'Press Start 2P', monospace";
 
   for (let i = 0; i < castEntries.length; i++) {
     const entry = castEntries[i];
@@ -412,29 +412,29 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
   // Controls
   ctx.textAlign = 'center';
   ctx.fillStyle = '#888888';
-  ctx.font = '16px monospace';
+  ctx.font = "9px 'Press Start 2P', monospace";
   ctx.fillText('Arrow keys = move    Ctrl = fire gun', cx, 275);
 
   // Difficulty selection
   ctx.fillStyle = COLOR.HUD_TEXT;
-  ctx.font = 'bold 22px monospace';
+  ctx.font = "13px 'Press Start 2P', monospace";
   ctx.fillText('SELECT DIFFICULTY:', cx, 310);
 
   for (let i = 0; i < diffNames.length; i++) {
     const y = 345 + i * 34;
     if (i === selectedDifficulty) {
       ctx.fillStyle = COLOR.PLAYER;
-      ctx.font = 'bold 22px monospace';
+      ctx.font = "13px 'Press Start 2P', monospace";
       ctx.fillText(`> ${diffNames[i]} <`, cx, y);
     } else {
       ctx.fillStyle = COLOR.HUD_TEXT;
-      ctx.font = '20px monospace';
+      ctx.font = "11px 'Press Start 2P', monospace";
       ctx.fillText(diffNames[i], cx, y);
     }
   }
 
   ctx.fillStyle = '#888888';
-  ctx.font = '16px monospace';
+  ctx.font = "9px 'Press Start 2P', monospace";
   ctx.fillText('Up/Down to select, Enter to start', cx, CANVAS_HEIGHT - 10);
 }
 
@@ -508,7 +508,7 @@ export function drawPresentHud(ctx: CanvasRenderingContext2D, score: number, lev
   ctx.fillStyle = COLOR.HUD_BG;
   ctx.fillRect(0, 0, CANVAS_WIDTH, HUD_HEIGHT);
 
-  ctx.font = 'bold 18px monospace';
+  ctx.font = "10px 'Press Start 2P', monospace";
   ctx.textBaseline = 'middle';
   const y = HUD_HEIGHT / 2;
 
@@ -539,10 +539,10 @@ export function drawHighScores(
 
   // Title
   ctx.fillStyle = COLOR.GEM;
-  ctx.font = 'bold 40px monospace';
+  ctx.font = "16px 'Press Start 2P', monospace";
   ctx.fillText('HIGH SCORES', cx, 60);
 
-  ctx.font = 'bold 22px monospace';
+  ctx.font = "11px 'Press Start 2P', monospace";
   for (let i = 0; i < scores.length; i++) {
     const y = 130 + i * 50;
     const entry = scores[i];
@@ -558,6 +558,6 @@ export function drawHighScores(
   }
 
   ctx.fillStyle = '#888888';
-  ctx.font = '18px monospace';
+  ctx.font = "10px 'Press Start 2P', monospace";
   ctx.fillText('Press any key to continue', cx, CANVAS_HEIGHT - 30);
 }
