@@ -277,23 +277,60 @@ export function drawHud(
 }
 
 /**
- * Draw a centered overlay message.
+ * Draw a ZX Spectrum-style paper banner overlay.
+ * Ignores line.size — uses fixed pixel-font sizes to match retro aesthetic.
  */
 export function drawOverlay(ctx: CanvasRenderingContext2D, lines: Array<{ text: string; color: string; size: number }>): void {
-  ctx.fillStyle = '#000000AA';
-  ctx.fillRect(0, MAZE_Y, CANVAS_WIDTH, EROWS * CELL_SIZE);
+  const BORDER = 6;
+  const BANNER_H = 5 * CELL_SIZE; // 120 px
+  const bannerY = MAZE_Y + Math.floor((EROWS * CELL_SIZE - BANNER_H) / 2);
+
+  // Paper colour: red for game-over, dark green for level-won
+  const fc = lines[0].color.toLowerCase();
+  const isSuccess = fc === '#00ff00' || fc === '#00cc00';
+  const paperColor = isSuccess ? '#005500' : '#AA0000';
+
+  // Yellow outer border
+  ctx.fillStyle = '#FFFF00';
+  ctx.fillRect(0, bannerY, CANVAS_WIDTH, BANNER_H);
+
+  // Coloured paper interior
+  ctx.fillStyle = paperColor;
+  ctx.fillRect(BORDER, bannerY + BORDER, CANVAS_WIDTH - BORDER * 2, BANNER_H - BORDER * 2);
+
+  // Text layout
+  const TITLE_SIZE = 16;
+  const LINE_SIZE  = 11;
+  const PROMPT_SIZE = 10;
+  const GAP = 8;
+
+  const innerH = BANNER_H - BORDER * 2;
+  const totalTextH = TITLE_SIZE + GAP
+    + (lines.length - 1) * (LINE_SIZE + 4)
+    + GAP + PROMPT_SIZE;
+  let y = bannerY + BORDER + Math.floor((innerH - totalTextH) / 2) + TITLE_SIZE / 2;
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const centerY = MAZE_Y + (EROWS * CELL_SIZE) / 2;
+  const cx = CANVAS_WIDTH / 2;
 
-  let y = centerY - ((lines.length - 1) * 25);
-  for (const line of lines) {
-    ctx.fillStyle = line.color;
-    ctx.font = `bold ${line.size}px monospace`;
-    ctx.fillText(line.text, CANVAS_WIDTH / 2, y);
-    y += line.size + 10;
+  // Title with ×× decoration
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = `${TITLE_SIZE}px 'Press Start 2P', monospace`;
+  ctx.fillText(`\u00D7\u00D7 ${lines[0].text} \u00D7\u00D7`, cx, y);
+  y += TITLE_SIZE + GAP;
+
+  // Remaining lines
+  ctx.font = `${LINE_SIZE}px 'Press Start 2P', monospace`;
+  for (let i = 1; i < lines.length; i++) {
+    ctx.fillText(lines[i].text, cx, y);
+    y += LINE_SIZE + 4;
   }
+
+  // "Press any button." prompt
+  y += GAP;
+  ctx.font = `${PROMPT_SIZE}px 'Press Start 2P', monospace`;
+  ctx.fillText('Press any button.', cx, y);
 }
 
 /**
@@ -399,6 +436,90 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
   ctx.fillStyle = '#888888';
   ctx.font = '16px monospace';
   ctx.fillText('Up/Down to select, Enter to start', cx, CANVAS_HEIGHT - 10);
+}
+
+/** Cache: attrColor → { wall: ImageData, floor: ImageData } — avoids re-allocating per cell per frame */
+const attrCache = new Map<string, { wall: ImageData; floor: ImageData }>();
+
+function getAttrTiles(ctx: CanvasRenderingContext2D, attrColor: string) {
+  let entry = attrCache.get(attrColor);
+  if (!entry) {
+    entry = {
+      wall:  bitmapToImageData(ctx, BRICK, attrColor, '#000000'),
+      floor: bitmapToImageData(ctx, FLOOR, attrColor, '#000000'),
+    };
+    attrCache.set(attrColor, entry);
+  }
+  return entry;
+}
+
+/**
+ * Re-draw a single tile using a ZX Spectrum-style attribute colour:
+ * the tile bitmap (brick or floor) is rendered with attrColor as ink and
+ * black as paper, so the pixel pattern stays visible but changes hue.
+ */
+export function drawCellAttr(
+  ctx: CanvasRenderingContext2D,
+  gx: number,
+  gy: number,
+  isWall: boolean,
+  attrColor: string,
+): void {
+  const tiles = getAttrTiles(ctx, attrColor);
+  ctx.putImageData(isWall ? tiles.wall : tiles.floor, gx * CELL_SIZE, MAZE_Y + gy * CELL_SIZE);
+}
+
+/**
+ * Re-draw any sprites (gems, gun, exit, enemies, player) at a grid cell
+ * in attrColor, for the level-presentation attribute flash effect.
+ */
+export function drawSpritesAtCellAttr(
+  ctx: CanvasRenderingContext2D,
+  gx: number,
+  gy: number,
+  gems: GemsState,
+  enemies: EnemyState[],
+  player: PlayerState,
+  attrColor: string,
+): void {
+  if ((gx & 1) && (gy & 1) && gems.gemmap[(gy >> 1) * COLS + (gx >> 1)]) {
+    drawSprite(ctx, GEM, gx * CELL_SIZE, gy * CELL_SIZE, attrColor);
+  }
+  if (gems.gunPlaced && gems.gunGx === gx && gems.gunGy === gy) {
+    drawSprite(ctx, GUN, gx * CELL_SIZE, gy * CELL_SIZE, attrColor);
+  }
+  if (gems.exitGx === gx && gems.exitGy === gy) {
+    drawSprite(ctx, EXIT, gx * CELL_SIZE, gy * CELL_SIZE, attrColor);
+  }
+  for (const e of enemies) {
+    if (e.gx === gx && e.gy === gy) {
+      drawSprite(ctx, ENEMY_SHAPE, e.px, e.py, attrColor);
+    }
+  }
+  if (player.gx === gx && player.gy === gy) {
+    drawSprite(ctx, getPlayerSprite(player.dir, player.walk), player.px, player.py, attrColor);
+  }
+}
+
+/**
+ * Draw the HUD during level presentation (label replaces gems/gun/timer).
+ */
+export function drawPresentHud(ctx: CanvasRenderingContext2D, score: number, level: number, label: string, color: string): void {
+  ctx.fillStyle = COLOR.HUD_BG;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, HUD_HEIGHT);
+
+  ctx.font = 'bold 18px monospace';
+  ctx.textBaseline = 'middle';
+  const y = HUD_HEIGHT / 2;
+
+  ctx.fillStyle = COLOR.HUD_TEXT;
+  ctx.textAlign = 'left';
+  ctx.fillText(`SCORE:${String(score).padStart(6, '0')}`, 8, y);
+  ctx.fillText(`LVL:${level}`, 210, y);
+
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.fillText(label, CANVAS_WIDTH / 2, y);
 }
 
 /**

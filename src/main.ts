@@ -1,9 +1,10 @@
 import './style.css';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, CELL_SIZE, FPS, DIFFICULTIES, COLS, ECOLS, EROWS, DIR_DX, DIR_DY } from './constants.ts';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, CELL_SIZE, FPS, DIFFICULTIES, COLS, ECOLS, EROWS, DIR_DX, DIR_DY, COLOR } from './constants.ts';
 import { generateMaze } from './maze.ts';
 import {
   drawMaze, drawPlayer, drawItems, drawEnemy, drawShotLine, eraseShotLine,
   eraseTiles, redrawItemsNear, drawHud, drawOverlay, drawMenu, drawHighScores,
+  drawPresentHud, drawCellAttr, drawSpritesAtCellAttr,
 } from './renderer.ts';
 import { initInput, getDirection, isFirePressed } from './input.ts';
 import { createPlayer, updatePlayer } from './player.ts';
@@ -27,7 +28,7 @@ ctx2d.imageSmoothingEnabled = false;
 initInput();
 
 // ─── Game state ───
-const Phase = { Menu: 0, Playing: 1, LevelWon: 2, GameOver: 3, HiScores: 4 } as const;
+const Phase = { Menu: 0, Playing: 1, LevelWon: 2, GameOver: 3, HiScores: 4, Presenting: 5 } as const;
 type Phase = (typeof Phase)[keyof typeof Phase];
 
 let phase: Phase = Phase.Menu;
@@ -60,6 +61,22 @@ let demoFireRequest = false;
 let overlayTimer = 0;
 let hiScoreRank = -1;
 let hiScoreKeyWait = false;
+
+// Level presentation state – zooming attribute rectangle (ZX Spectrum style)
+type PresentRect = { left: number; top: number; right: number; bottom: number };
+type PresentItem = { label: string; gx: number; gy: number; color: string };
+
+const PRESENT_HOLD_FRAMES = 20;  // frames to flash at target (~0.4 s)
+// ZX Spectrum bright attribute colours cycle around the border
+const PRESENT_COLORS = ['#FF0000', '#FFFF00', '#00FFFF', '#FFFFFF', '#FF00FF', '#00FF00'] as const;
+
+let presentItems: PresentItem[] = [];
+let presentIdx = 0;
+let presentRect: PresentRect = { left: 0, top: 0, right: 0, bottom: 0 };
+let presentTarget: PresentRect = { left: 0, top: 0, right: 0, bottom: 0 };
+let presentZoomed = false;
+let presentTimer = 0;   // frame counter; reset to 0 on each sub-phase entry
+let presentKeyWait = false;
 
 function startLevel(): void {
   const diff = DIFFICULTIES[difficulty];
@@ -101,7 +118,161 @@ function startLevel(): void {
   prevEnemyPx = enemyCtx.enemies.map(e => e.px);
   prevEnemyPy = enemyCtx.enemies.map(e => e.py);
 
+  if (isDemo) {
+    phase = Phase.Playing;
+  } else {
+    startPresentation();
+  }
+}
+
+// ─── Presentation helpers ───
+
+function makeTarget(gx: number, gy: number): PresentRect {
+  return {
+    left:   Math.max(0, gx - 1),
+    top:    Math.max(0, gy - 1),
+    right:  Math.min(ECOLS - 1, gx + 1),
+    bottom: Math.min(EROWS - 1, gy + 1),
+  };
+}
+
+/** Re-draw border cells with ZX Spectrum attribute colouring (tile visible, recoloured). */
+function drawRectBorder(rect: PresentRect, color: string): void {
+  const { left, top, right, bottom } = rect;
+  function attrCell(gx: number, gy: number): void {
+    drawCellAttr(ctx2d, gx, gy, !!maze.wallmap[gy * ECOLS + gx], color);
+    drawSpritesAtCellAttr(ctx2d, gx, gy, gems, enemyCtx.enemies, player, color);
+  }
+  for (let gx = left; gx <= right; gx++) {
+    attrCell(gx, top);
+    if (bottom !== top) attrCell(gx, bottom);
+  }
+  for (let gy = top + 1; gy < bottom; gy++) {
+    attrCell(left, gy);
+    if (right !== left) attrCell(right, gy);
+  }
+}
+
+/** Restore (un-paint) the border cells by redrawing tiles + sprites. */
+function eraseRectBorder(rect: PresentRect): void {
+  const { left, top, right, bottom } = rect;
+  function restoreCell(gx: number, gy: number): void {
+    const px = gx * CELL_SIZE;
+    const py = gy * CELL_SIZE;
+    eraseTiles(ctx2d, px, py, maze);
+    redrawItemsNear(ctx2d, px, py, gems);
+    for (let i = 0; i < enemyCtx.enemies.length; i++) {
+      const e = enemyCtx.enemies[i];
+      if (e.gx === gx && e.gy === gy) drawEnemy(ctx2d, e, i, 0, maze);
+    }
+    if (player.gx === gx && player.gy === gy) drawPlayer(ctx2d, player, maze);
+  }
+  for (let gx = left; gx <= right; gx++) {
+    restoreCell(gx, top);
+    if (bottom !== top) restoreCell(gx, bottom);
+  }
+  for (let gy = top + 1; gy < bottom; gy++) {
+    restoreCell(left, gy);
+    if (right !== left) restoreCell(right, gy);
+  }
+}
+
+function shrinkRect(rect: PresentRect, target: PresentRect): PresentRect {
+  return {
+    left:   rect.left   < target.left   ? rect.left   + 1 : target.left,
+    top:    rect.top    < target.top    ? rect.top    + 1 : target.top,
+    right:  rect.right  > target.right  ? rect.right  - 1 : target.right,
+    bottom: rect.bottom > target.bottom ? rect.bottom - 1 : target.bottom,
+  };
+}
+
+function rectAtTarget(): boolean {
+  return presentRect.left === presentTarget.left &&
+         presentRect.top  === presentTarget.top  &&
+         presentRect.right  === presentTarget.right &&
+         presentRect.bottom === presentTarget.bottom;
+}
+
+// ─── Presentation lifecycle ───
+
+function presentZoomColor(): string {
+  // Color changes every 2 frames — smooth but still visibly cycling
+  return PRESENT_COLORS[(presentTimer >> 1) % PRESENT_COLORS.length];
+}
+
+function beginPresentItem(): void {
+  presentRect = { left: 0, top: 0, right: ECOLS - 1, bottom: EROWS - 1 };
+  presentTarget = makeTarget(presentItems[presentIdx].gx, presentItems[presentIdx].gy);
+  presentZoomed = false;
+  presentTimer = 0;
+  drawRectBorder(presentRect, presentZoomColor());
+  drawPresentHud(ctx2d, score, level, presentItems[presentIdx].label, presentItems[presentIdx].color);
+}
+
+function startPresentation(): void {
+  presentItems = [
+    { label: 'YOU', gx: player.gx, gy: player.gy, color: COLOR.PLAYER },
+  ];
+  for (let i = 0; i < enemyCtx.enemies.length; i++) {
+    presentItems.push({
+      label: 'GHOST',
+      gx: enemyCtx.enemies[i].gx,
+      gy: enemyCtx.enemies[i].gy,
+      color: COLOR.ENEMY[i % COLOR.ENEMY.length],
+    });
+  }
+  if (gems.gunPlaced) {
+    presentItems.push({ label: 'GUN', gx: gems.gunGx, gy: gems.gunGy, color: COLOR.GUN });
+  }
+  presentItems.push({ label: 'EXIT', gx: gems.exitGx, gy: gems.exitGy, color: COLOR.EXIT_LOCKED });
+  presentIdx = 0;
+  presentKeyWait = true;
+  beginPresentItem();
+  phase = Phase.Presenting;
+}
+
+function endPresentation(): void {
+  eraseRectBorder(presentRect);
+  const gemsToGo = Math.max(0, gems.gemsNeeded - gems.gemsCollected);
+  drawHud(ctx2d, score, level, gemsToGo, timerSec, gems.hasGun, false);
   phase = Phase.Playing;
+}
+
+function tickPresenting(): void {
+  if (presentKeyWait) {
+    if (_pressedKeys.size === 0) presentKeyWait = false;
+    return;
+  }
+  if (_pressedKeys.size > 0) {
+    endPresentation();
+    return;
+  }
+
+  presentTimer++;
+
+  if (!presentZoomed) {
+    // Zoom in: 2 cells per frame, colour changes every 2 frames
+    eraseRectBorder(presentRect);
+    presentRect = shrinkRect(presentRect, presentTarget);
+    if (!rectAtTarget()) presentRect = shrinkRect(presentRect, presentTarget);
+    drawRectBorder(presentRect, presentZoomColor());
+    if (rectAtTarget()) { presentZoomed = true; presentTimer = 0; }
+  } else {
+    // Hold: flash in the item's own colour, 4-frame blink period
+    eraseRectBorder(presentRect);
+    if (presentTimer & 4) {
+      drawRectBorder(presentRect, presentItems[presentIdx].color);
+    }
+    if (presentTimer >= PRESENT_HOLD_FRAMES) {
+      eraseRectBorder(presentRect);
+      presentIdx++;
+      if (presentIdx >= presentItems.length) {
+        endPresentation();
+      } else {
+        beginPresentItem();
+      }
+    }
+  }
 }
 
 function startDemo(): void {
@@ -255,6 +426,8 @@ function gameLoop(timestamp: number): void {
 function tick(): void {
   if (phase === Phase.Menu) {
     tickMenu();
+  } else if (phase === Phase.Presenting) {
+    tickPresenting();
   } else if (phase === Phase.Playing) {
     tickPlaying();
   } else if (phase === Phase.LevelWon || phase === Phase.GameOver) {
@@ -479,5 +652,7 @@ function tickHiScores(): void {
 
 // ─── Start ───
 loadHiScores();
-drawMenu(ctx2d, menuCursor, DIFFICULTIES.map(d => d.name));
-requestAnimationFrame(gameLoop);
+document.fonts.ready.then(() => {
+  drawMenu(ctx2d, menuCursor, DIFFICULTIES.map(d => d.name));
+  requestAnimationFrame(gameLoop);
+});
