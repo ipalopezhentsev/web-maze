@@ -59,7 +59,7 @@ VS Code: `Ctrl+Shift+B` runs the build task.
 Ported from a ZX Spectrum game written in C. Original source: https://github.com/ipalopezhentsev/zxspectrum-games
 
 ## Bugs
-- title screen: move difficulty before cast
++ title screen: move difficulty before cast
 - COINS TO GO HUD is very close to GUN
 ![alt text](image.png)
 - "DEMO" in HUD hides time 

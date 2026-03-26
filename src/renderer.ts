@@ -373,12 +373,33 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
   ctx.textBaseline = 'middle';
   const cx = CANVAS_WIDTH / 2;
 
+  // Difficulty selection (top)
+  ctx.fillStyle = COLOR.HUD_TEXT;
+  ctx.font = "13px 'Press Start 2P', monospace";
+  ctx.fillText('SELECT DIFFICULTY:', cx, 35);
+
+  for (let i = 0; i < diffNames.length; i++) {
+    const y = 70 + i * 34;
+    if (i === selectedDifficulty) {
+      ctx.fillStyle = COLOR.PLAYER;
+      ctx.font = "13px 'Press Start 2P', monospace";
+      ctx.fillText(`> ${diffNames[i]} <`, cx, y);
+    } else {
+      ctx.fillStyle = COLOR.HUD_TEXT;
+      ctx.font = "11px 'Press Start 2P', monospace";
+      ctx.fillText(diffNames[i], cx, y);
+    }
+  }
+
   // --- The Cast ---
+  // diffNames.length options at spacing 34, first at y=70 → last at 70+(n-1)*34; add 55px gap
+  const castHeaderY = 70 + (diffNames.length - 1) * 34 + 90;
+  ctx.textAlign = 'center';
   ctx.fillStyle = COLOR.GEM;
   ctx.font = "11px 'Press Start 2P', monospace";
-  ctx.fillText('--- The Cast ---', cx, 75);
+  ctx.fillText('--- The Cast ---', cx, castHeaderY);
 
-  const castLeft = 140;
+  const castLeft = 195;
   const castTextX = castLeft + CELL_SIZE + 12;
   const castEntries: Array<{ bitmap: readonly number[]; color: string; label: string; tile?: { fg: string; bg: string } }> = [
     { bitmap: MAN_FRONT_STAND, color: COLOR.PLAYER, label: 'YOU    Escape the maze alive!' },
@@ -389,8 +410,8 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
     { bitmap: BRICK, color: COLOR.WALL_BRICK, label: 'WALL   Don\'t get cornered!', tile: { fg: COLOR.WALL_BRICK, bg: COLOR.WALL_MORTAR } },
   ];
 
-  const castStartY = 95;
-  const castSpacing = 28;
+  const castStartY = castHeaderY + 22;
+  const castSpacing = 26;
   ctx.textAlign = 'left';
   ctx.font = "9px 'Press Start 2P', monospace";
 
@@ -406,27 +427,7 @@ export function drawMenu(ctx: CanvasRenderingContext2D, selectedDifficulty: numb
     ctx.fillText(entry.label, castTextX, y + CELL_SIZE / 2);
   }
 
-  // Controls
   ctx.textAlign = 'center';
-
-  // Difficulty selection
-  ctx.fillStyle = COLOR.HUD_TEXT;
-  ctx.font = "13px 'Press Start 2P', monospace";
-  ctx.fillText('SELECT DIFFICULTY:', cx, 310);
-
-  for (let i = 0; i < diffNames.length; i++) {
-    const y = 345 + i * 34;
-    if (i === selectedDifficulty) {
-      ctx.fillStyle = COLOR.PLAYER;
-      ctx.font = "13px 'Press Start 2P', monospace";
-      ctx.fillText(`> ${diffNames[i]} <`, cx, y);
-    } else {
-      ctx.fillStyle = COLOR.HUD_TEXT;
-      ctx.font = "11px 'Press Start 2P', monospace";
-      ctx.fillText(diffNames[i], cx, y);
-    }
-  }
-
   ctx.fillStyle = '#888888';
   ctx.font = "9px 'Press Start 2P', monospace";
   ctx.fillText('Up/Down to select, Enter to start', cx, CANVAS_HEIGHT - 10);
