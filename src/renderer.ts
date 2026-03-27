@@ -6,18 +6,37 @@ import { Direction } from './types.ts';
 import type { MazeData } from './types.ts';
 import type { PlayerState } from './player.ts';
 
+// ─── Zoom rendering state ───
+// _zoom: 1 = normal, 2 = zoomed.  _camX/_camY: camera in zoomed-pixel coords.
+let _zoom = 1;
+let _camX = 0;
+let _camY = 0;
+
+export function setZoomRender(zoom: number, camX: number, camY: number): void {
+  _zoom = zoom;
+  _camX = camX;
+  _camY = camY;
+}
+
+export function resetZoomRender(): void {
+  _zoom = 1;
+  _camX = 0;
+  _camY = 0;
+}
+
 /**
- * Pre-render an 8x8 bitmap into a CELL_SIZE × CELL_SIZE ImageData,
- * scaling each pixel to (CELL_SIZE/8) × (CELL_SIZE/8) block.
+ * Pre-render an 8x8 bitmap into a size × size ImageData,
+ * scaling each pixel to (size/8) × (size/8) block.
  */
 function bitmapToImageData(
   ctx: CanvasRenderingContext2D,
   bitmap: readonly number[],
   fgColor: string,
   bgColor: string,
+  size = CELL_SIZE,
 ): ImageData {
-  const scale = CELL_SIZE / 8;
-  const img = ctx.createImageData(CELL_SIZE, CELL_SIZE);
+  const scale = size / 8;
+  const img = ctx.createImageData(size, size);
   const data = img.data;
 
   const fg = parseColor(fgColor);
@@ -33,7 +52,7 @@ function bitmapToImageData(
         for (let sx = 0; sx < scale; sx++) {
           const px = (col * scale + sx);
           const py = (row * scale + sy);
-          const idx = (py * CELL_SIZE + px) * 4;
+          const idx = (py * size + px) * 4;
           data[idx] = color[0];
           data[idx + 1] = color[1];
           data[idx + 2] = color[2];
@@ -53,9 +72,12 @@ function parseColor(hex: string): [number, number, number] {
   return [r, g, b];
 }
 
-/** Cached tile images */
+/** Cached tile images — normal (CELL_SIZE) and zoomed (CELL_SIZE*2) */
 let wallTile: ImageData | null = null;
 let floorTile: ImageData | null = null;
+const ZOOM_CELL = CELL_SIZE * 2;
+let zoomWallTile: ImageData | null = null;
+let zoomFloorTile: ImageData | null = null;
 
 function ensureTiles(ctx: CanvasRenderingContext2D): void {
   if (!wallTile) {
@@ -64,21 +86,31 @@ function ensureTiles(ctx: CanvasRenderingContext2D): void {
   if (!floorTile) {
     floorTile = bitmapToImageData(ctx, FLOOR, COLOR.CORRIDOR_DOT, COLOR.CORRIDOR);
   }
+  if (!zoomWallTile) {
+    zoomWallTile = bitmapToImageData(ctx, BRICK, COLOR.WALL_BRICK, COLOR.WALL_MORTAR, ZOOM_CELL);
+  }
+  if (!zoomFloorTile) {
+    zoomFloorTile = bitmapToImageData(ctx, FLOOR, COLOR.CORRIDOR_DOT, COLOR.CORRIDOR, ZOOM_CELL);
+  }
+}
+
+/** Return the right tile ImageData for current zoom level. */
+function getTile(isWall: boolean): ImageData {
+  if (_zoom > 1) return isWall ? zoomWallTile! : zoomFloorTile!;
+  return isWall ? wallTile! : floorTile!;
 }
 
 /**
- * Draw the full maze on the canvas.
- * Assumes ctx has been translated by MAZE_Y.
+ * Draw the maze on the canvas. Optional range params limit to visible cells.
  */
-export function drawMaze(ctx: CanvasRenderingContext2D, maze: MazeData): void {
+export function drawMaze(ctx: CanvasRenderingContext2D, maze: MazeData, gxMin = 0, gyMin = 0, gxMax = ECOLS, gyMax = EROWS): void {
   ensureTiles(ctx);
+  const cellSz = CELL_SIZE * _zoom;
 
-  for (let gy = 0; gy < EROWS; gy++) {
-    for (let gx = 0; gx < ECOLS; gx++) {
-      const isWall = maze.wallmap[gy * ECOLS + gx];
-      const tile = isWall ? wallTile! : floorTile!;
-      // putImageData ignores transforms, so add MAZE_Y manually
-      ctx.putImageData(tile, gx * CELL_SIZE, MAZE_Y + gy * CELL_SIZE);
+  for (let gy = gyMin; gy < gyMax; gy++) {
+    for (let gx = gxMin; gx < gxMax; gx++) {
+      const tile = getTile(!!maze.wallmap[gy * ECOLS + gx]);
+      ctx.putImageData(tile, gx * cellSz - _camX, MAZE_Y + gy * cellSz - _camY);
     }
   }
 }
@@ -98,20 +130,23 @@ function getPlayerSprite(dir: Direction, walk: number): readonly number[] {
 }
 
 /**
- * Draw an 8x8 bitmap sprite at pixel position, scaled to CELL_SIZE.
+ * Draw an 8x8 bitmap sprite at pixel position, scaled for current zoom.
  * Only "on" bits are drawn (transparent background).
- * px/py are in maze-local coordinates (MAZE_Y offset added here).
+ * px/py are in maze-local coordinates (original scale).
  */
 function drawSprite(ctx: CanvasRenderingContext2D, bitmap: readonly number[], px: number, py: number, color: string): void {
-  const scale = CELL_SIZE / 8;
+  const scale = CELL_SIZE * _zoom / 8;
   ctx.fillStyle = color;
-  const offy = MAZE_Y;
 
   for (let row = 0; row < 8; row++) {
     const byte = bitmap[row];
     for (let col = 0; col < 8; col++) {
       if ((byte >> (7 - col)) & 1) {
-        ctx.fillRect(px + col * scale, offy + py + row * scale, scale, scale);
+        ctx.fillRect(
+          px * _zoom - _camX + col * scale,
+          MAZE_Y + py * _zoom - _camY + row * scale,
+          scale, scale,
+        );
       }
     }
   }
@@ -119,29 +154,30 @@ function drawSprite(ctx: CanvasRenderingContext2D, bitmap: readonly number[], px
 
 /**
  * Redraw the background tiles covering a pixel-aligned rectangle.
- * px/py are in maze-local coordinates.
+ * px/py are in maze-local coordinates (original scale).
  */
 export function eraseTiles(ctx: CanvasRenderingContext2D, px: number, py: number, maze: MazeData): void {
   const gxMin = Math.floor(px / CELL_SIZE);
   const gyMin = Math.floor(py / CELL_SIZE);
   const gxMax = Math.ceil((px + CELL_SIZE) / CELL_SIZE);
   const gyMax = Math.ceil((py + CELL_SIZE) / CELL_SIZE);
+  const cellSz = CELL_SIZE * _zoom;
 
   ensureTiles(ctx);
   for (let gy = gyMin; gy < gyMax && gy < EROWS; gy++) {
     for (let gx = gxMin; gx < gxMax && gx < ECOLS; gx++) {
-      const isWall = maze.wallmap[gy * ECOLS + gx];
-      const tile = isWall ? wallTile! : floorTile!;
-      ctx.putImageData(tile, gx * CELL_SIZE, MAZE_Y + gy * CELL_SIZE);
+      const tile = getTile(!!maze.wallmap[gy * ECOLS + gx]);
+      ctx.putImageData(tile, gx * cellSz - _camX, MAZE_Y + gy * cellSz - _camY);
     }
   }
 }
 
 /**
  * Draw the player sprite at the current pixel position.
+ * skipErase: in zoomed full-redraw mode, tiles are already drawn.
  */
-export function drawPlayer(ctx: CanvasRenderingContext2D, player: PlayerState, maze: MazeData): void {
-  eraseTiles(ctx, player.px, player.py, maze);
+export function drawPlayer(ctx: CanvasRenderingContext2D, player: PlayerState, maze: MazeData, skipErase = false): void {
+  if (!skipErase) eraseTiles(ctx, player.px, player.py, maze);
 
   const sprite = getPlayerSprite(player.dir, player.walk);
   drawSprite(ctx, sprite, player.px, player.py, COLOR.PLAYER);
@@ -207,9 +243,10 @@ export function redrawItemsNear(ctx: CanvasRenderingContext2D, px: number, py: n
 
 /**
  * Draw an enemy sprite. Stunned enemies blink.
+ * skipErase: in zoomed full-redraw mode, tiles are already drawn.
  */
-export function drawEnemy(ctx: CanvasRenderingContext2D, enemy: EnemyState, index: number, frameCount: number, maze: MazeData): void {
-  eraseTiles(ctx, enemy.px, enemy.py, maze);
+export function drawEnemy(ctx: CanvasRenderingContext2D, enemy: EnemyState, index: number, frameCount: number, maze: MazeData, skipErase = false): void {
+  if (!skipErase) eraseTiles(ctx, enemy.px, enemy.py, maze);
 
   if (enemy.stunFrames > 0 && (frameCount & 4)) return;
 
@@ -221,9 +258,10 @@ export function drawEnemy(ctx: CanvasRenderingContext2D, enemy: EnemyState, inde
  * Draw a shot line along a path.
  */
 export function drawShotLine(ctx: CanvasRenderingContext2D, path: Array<{ gx: number; gy: number }>): void {
+  const cellSz = CELL_SIZE * _zoom;
   ctx.fillStyle = COLOR.GUN;
   for (const { gx, gy } of path) {
-    ctx.fillRect(gx * CELL_SIZE, MAZE_Y + gy * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+    ctx.fillRect(gx * cellSz - _camX, MAZE_Y + gy * cellSz - _camY, cellSz, cellSz);
   }
 }
 
@@ -231,11 +269,11 @@ export function drawShotLine(ctx: CanvasRenderingContext2D, path: Array<{ gx: nu
  * Erase a shot line by redrawing floor tiles.
  */
 export function eraseShotLine(ctx: CanvasRenderingContext2D, path: Array<{ gx: number; gy: number }>, maze: MazeData): void {
+  const cellSz = CELL_SIZE * _zoom;
   ensureTiles(ctx);
   for (const { gx, gy } of path) {
-    const isWall = maze.wallmap[gy * ECOLS + gx];
-    const tile = isWall ? wallTile! : floorTile!;
-    ctx.putImageData(tile, gx * CELL_SIZE, MAZE_Y + gy * CELL_SIZE);
+    const tile = getTile(!!maze.wallmap[gy * ECOLS + gx]);
+    ctx.putImageData(tile, gx * cellSz - _camX, MAZE_Y + gy * cellSz - _camY);
   }
 }
 
@@ -251,6 +289,7 @@ export function drawHud(
   hasGun: boolean,
   timerWarn: boolean,
   isDemo = false,
+  zoom = false,
 ): void {
   // Background
   ctx.fillStyle = COLOR.HUD_BG;
@@ -287,11 +326,15 @@ export function drawHud(
   const timeX = CANVAS_WIDTH - 8;
   ctx.fillText(timeStr, timeX, y);
 
-  // DEMO label (left of timer)
+  // DEMO / ZOOM label (left of timer)
   if (isDemo) {
     const timeW = ctx.measureText(timeStr).width;
     ctx.fillStyle = '#FFFF00';
     ctx.fillText('DEMO', timeX - timeW - 16, y);
+  } else if (zoom) {
+    const timeW = ctx.measureText(timeStr).width;
+    ctx.fillStyle = '#FFFF00';
+    ctx.fillText('ZOOM', timeX - timeW - 16, y);
   }
 
 }
@@ -480,7 +523,8 @@ export function drawCellAttr(
   attrColor: string,
 ): void {
   const tiles = getAttrTiles(ctx, attrColor);
-  ctx.putImageData(isWall ? tiles.wall : tiles.floor, gx * CELL_SIZE, MAZE_Y + gy * CELL_SIZE);
+  const cellSz = CELL_SIZE * _zoom;
+  ctx.putImageData(isWall ? tiles.wall : tiles.floor, gx * cellSz - _camX, MAZE_Y + gy * cellSz - _camY);
 }
 
 /**

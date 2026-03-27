@@ -1,10 +1,11 @@
 import './style.css';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, CELL_SIZE, FPS, DIFFICULTIES, ECOLS, EROWS, COLOR } from './constants.ts';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, CELL_SIZE, HUD_HEIGHT, FPS, DIFFICULTIES, ECOLS, EROWS, COLOR } from './constants.ts';
 import { generateMaze } from './maze.ts';
 import {
   drawMaze, drawPlayer, drawItems, drawEnemy, drawShotLine, eraseShotLine,
   eraseTiles, redrawItemsNear, drawHud, drawOverlay, drawMenu, drawHighScores,
   drawNameEntry, drawPresentHud, drawCellAttr, drawSpritesAtCellAttr,
+  setZoomRender, resetZoomRender,
 } from './renderer.ts';
 import { initInput, getDirection, isFirePressed, startTextInput, stopTextInput, drainTextInput } from './input.ts';
 import { createPlayer, updatePlayer } from './player.ts';
@@ -25,6 +26,32 @@ canvas.height = CANVAS_HEIGHT;
 
 const ctx2d = canvas.getContext('2d')!;
 ctx2d.imageSmoothingEnabled = false;
+
+let zoomMode = true;
+let cameraX = 0;
+let cameraY = 0;
+
+// Zoom-in transition (normal → zoomed at level start)
+const zoomTransCanvas = document.createElement('canvas');
+zoomTransCanvas.width = CANVAS_WIDTH;
+zoomTransCanvas.height = CANVAS_HEIGHT - HUD_HEIGHT;
+const zoomTransCtx = zoomTransCanvas.getContext('2d')!;
+let zoomTransFrame = 0;
+const ZOOM_IN_FRAMES = 30; // 0.6 s at 50 fps
+
+// Countdown state ("READY… SET… GO!")
+let countdownFrame = 0;
+const COUNTDOWN_WORDS = [
+  { text: 'READY', frames: 30, color: '#FFFF00' },
+  { text: 'SET',   frames: 24, color: '#FF8800' },
+  { text: 'GO!',   frames: 20, color: '#00FF00' },
+] as const;
+// Pre-rendered text images for each countdown word (filled on first use)
+const countdownTextImgs: HTMLCanvasElement[] = [];
+// Snapshot of maze during countdown (avoids per-frame maze redraw)
+const countdownBgCanvas = document.createElement('canvas');
+countdownBgCanvas.width = CANVAS_WIDTH;
+countdownBgCanvas.height = CANVAS_HEIGHT;
 
 function scaleCanvas(): void {
   const isWide = window.innerWidth > 900;
@@ -53,6 +80,7 @@ syncMuteBtn();
 muteBtn.addEventListener('click', () => { toggleMute(); syncMuteBtn(); });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') { toggleMute(); syncMuteBtn(); }
+  if (e.code === 'KeyZ') toggleZoom();
 });
 
 // ─── Fullscreen button ───
@@ -73,7 +101,7 @@ fsBtn.addEventListener('click', () => {
 document.addEventListener('fullscreenchange', syncFsBtn);
 
 // ─── Game state ───
-const Phase = { Menu: 0, Playing: 1, LevelWon: 2, GameOver: 3, HiScores: 4, Presenting: 5, NameEntry: 6 } as const;
+const Phase = { Menu: 0, Playing: 1, LevelWon: 2, GameOver: 3, HiScores: 4, Presenting: 5, NameEntry: 6, ZoomIn: 7, Countdown: 8 } as const;
 type Phase = (typeof Phase)[keyof typeof Phase];
 
 let phase: Phase = Phase.Menu;
@@ -131,6 +159,168 @@ let presentZoomed = false;
 let presentTimer = 0;   // frame counter; reset to 0 on each sub-phase entry
 let presentKeyWait = false;
 
+// ─── Zoom mode helpers ───
+
+/** Update camera to smoothly track player position in zoomed pixel coords. */
+function updateCamera(): void {
+  const cellSz = CELL_SIZE * 2;
+  const mazeW = ECOLS * cellSz;
+  const mazeH = EROWS * cellSz;
+  const viewW = CANVAS_WIDTH;
+  const viewH = CANVAS_HEIGHT - HUD_HEIGHT;
+
+  let targetX = player.px * 2 + cellSz / 2 - viewW / 2;
+  let targetY = player.py * 2 + cellSz / 2 - viewH / 2;
+  targetX = Math.max(0, Math.min(mazeW - viewW, targetX));
+  targetY = Math.max(0, Math.min(mazeH - viewH, targetY));
+
+  cameraX += (targetX - cameraX) * 0.2;
+  cameraY += (targetY - cameraY) * 0.2;
+  cameraX = Math.max(0, Math.min(mazeW - viewW, cameraX));
+  cameraY = Math.max(0, Math.min(mazeH - viewH, cameraY));
+}
+
+function snapCamera(): void {
+  const cellSz = CELL_SIZE * 2;
+  const mazeW = ECOLS * cellSz;
+  const mazeH = EROWS * cellSz;
+  const viewW = CANVAS_WIDTH;
+  const viewH = CANVAS_HEIGHT - HUD_HEIGHT;
+  cameraX = Math.max(0, Math.min(mazeW - viewW, player.px * 2 + cellSz / 2 - viewW / 2));
+  cameraY = Math.max(0, Math.min(mazeH - viewH, player.py * 2 + cellSz / 2 - viewH / 2));
+}
+
+/** Render the zoomed view: draw visible tiles + sprites at 2x directly to display canvas. */
+function renderZoomedFrame(): void {
+  updateCamera();
+  const camRX = Math.round(cameraX);
+  const camRY = Math.round(cameraY);
+  const cellSz = CELL_SIZE * 2;
+
+  const gxMin = Math.max(0, Math.floor(camRX / cellSz));
+  const gyMin = Math.max(0, Math.floor(camRY / cellSz));
+  const gxMax = Math.min(ECOLS, Math.ceil((camRX + CANVAS_WIDTH) / cellSz) + 1);
+  const gyMax = Math.min(EROWS, Math.ceil((camRY + CANVAS_HEIGHT - HUD_HEIGHT) / cellSz) + 1);
+
+  setZoomRender(2, camRX, camRY);
+
+  // Clear maze area for edge cells
+  ctx2d.fillStyle = '#000';
+  ctx2d.fillRect(0, HUD_HEIGHT, CANVAS_WIDTH, CANVAS_HEIGHT - HUD_HEIGHT);
+
+  drawMaze(ctx2d, maze, gxMin, gyMin, gxMax, gyMax);
+  drawItems(ctx2d, gems);
+  if (shotPath && shotTimer > 0) drawShotLine(ctx2d, shotPath);
+  for (let i = 0; i < enemyCtx.enemies.length; i++) {
+    drawEnemy(ctx2d, enemyCtx.enemies[i], i, frameCount, maze, true);
+  }
+  drawPlayer(ctx2d, player, maze, true);
+
+  resetZoomRender();
+}
+
+function toggleZoom(): void {
+  if (phase !== Phase.Playing) return;
+  zoomMode = !zoomMode;
+  if (zoomMode) {
+    snapCamera();
+    renderZoomedFrame();
+  } else {
+    // Full redraw in normal mode
+    drawMaze(ctx2d, maze);
+    drawItems(ctx2d, gems);
+    for (let i = 0; i < enemyCtx.enemies.length; i++) {
+      drawEnemy(ctx2d, enemyCtx.enemies[i], i, frameCount, maze);
+    }
+    drawPlayer(ctx2d, player, maze);
+  }
+  const gemsToGo = Math.max(0, gems.gemsNeeded - gems.gemsCollected);
+  drawHud(ctx2d, score, level, gemsToGo, timerSec, gems.hasGun, timerSec <= 10, isDemo);
+}
+
+/** Capture current normal-scale maze and start zoom-in animation. */
+function startZoomTransition(): void {
+  // Snapshot the normal-scale maze area from the display canvas
+  zoomTransCtx.drawImage(canvas, 0, HUD_HEIGHT, CANVAS_WIDTH, CANVAS_HEIGHT - HUD_HEIGHT,
+    0, 0, CANVAS_WIDTH, CANVAS_HEIGHT - HUD_HEIGHT);
+  zoomTransFrame = 0;
+  zoomMode = false; // still normal during transition
+  phase = Phase.ZoomIn;
+}
+
+function tickZoomIn(): void {
+  zoomTransFrame++;
+  const t = Math.min(1, zoomTransFrame / ZOOM_IN_FRAMES);
+  // Ease-out curve
+  const eased = 1 - (1 - t) * (1 - t);
+  const zoom = 1 + eased; // 1 → 2
+
+  // Zoom toward the player's position (in normal-scale source pixels)
+  const cx = player.px + CELL_SIZE / 2;
+  const cy = player.py + CELL_SIZE / 2;
+  const srcW = CANVAS_WIDTH / zoom;
+  const srcH = (CANVAS_HEIGHT - HUD_HEIGHT) / zoom;
+  const maxSrcX = CANVAS_WIDTH - srcW;
+  const maxSrcY = CANVAS_HEIGHT - HUD_HEIGHT - srcH;
+  const srcX = Math.max(0, Math.min(maxSrcX, cx - srcW / 2));
+  const srcY = Math.max(0, Math.min(maxSrcY, cy - srcH / 2));
+
+  ctx2d.fillStyle = '#000';
+  ctx2d.fillRect(0, HUD_HEIGHT, CANVAS_WIDTH, CANVAS_HEIGHT - HUD_HEIGHT);
+  ctx2d.imageSmoothingEnabled = false;
+  ctx2d.drawImage(zoomTransCanvas, srcX, srcY, srcW, srcH,
+    0, HUD_HEIGHT, CANVAS_WIDTH, CANVAS_HEIGHT - HUD_HEIGHT);
+
+  if (t >= 1) {
+    zoomMode = true;
+    snapCamera();
+    renderZoomedFrame();
+    const gemsToGo = Math.max(0, gems.gemsNeeded - gems.gemsCollected);
+    drawHud(ctx2d, score, level, gemsToGo, timerSec, gems.hasGun, false, isDemo);
+    phase = Phase.Playing;
+  }
+}
+
+function tickCountdown(): void {
+  countdownFrame++;
+
+  // Determine which word we're on
+  let elapsed = 0;
+  let wordIdx = 0;
+  for (let i = 0; i < COUNTDOWN_WORDS.length; i++) {
+    if (countdownFrame <= elapsed + COUNTDOWN_WORDS[i].frames) {
+      wordIdx = i;
+      break;
+    }
+    elapsed += COUNTDOWN_WORDS[i].frames;
+    if (i === COUNTDOWN_WORDS.length - 1) {
+      // All words done → zoom in
+      startZoomTransition();
+      return;
+    }
+  }
+
+  const localFrame = countdownFrame - elapsed;
+  const word = COUNTDOWN_WORDS[wordIdx];
+  const wordT = localFrame / word.frames;
+  const pop = 1 + 1.2 * Math.pow(1 - wordT, 3);
+
+  const cx = CANVAS_WIDTH / 2;
+  const cy = HUD_HEIGHT + (CANVAS_HEIGHT - HUD_HEIGHT) / 2;
+
+  // Restore maze snapshot (single drawImage, no per-tile redraw)
+  ctx2d.drawImage(countdownBgCanvas, 0, 0);
+
+  // Scale pre-rendered text via drawImage for smooth animation
+  const textImg = countdownTextImgs[wordIdx];
+  const alpha = wordT < 0.7 ? 1 : 1 - (wordT - 0.7) / 0.3;
+  const dw = textImg.width * pop;
+  const dh = textImg.height * pop;
+  ctx2d.globalAlpha = alpha;
+  ctx2d.drawImage(textImg, cx - dw / 2, cy - dh / 2, dw, dh);
+  ctx2d.globalAlpha = 1;
+}
+
 function startLevel(): void {
   const diff = DIFFICULTIES[difficulty];
 
@@ -157,23 +347,28 @@ function startLevel(): void {
   shotTimer = 0;
   firePrev = false;
 
-  // Draw everything
-  drawMaze(ctx2d, maze);
-  drawItems(ctx2d, gems);
-  for (let i = 0; i < enemyCtx.enemies.length; i++) {
-    drawEnemy(ctx2d, enemyCtx.enemies[i], i, 0, maze);
-  }
-  drawPlayer(ctx2d, player, maze);
-  drawHud(ctx2d, score, level, gems.gemsLeft - gems.gemsCollected, timerSec, gems.hasGun, false, isDemo);
-
   prevPx = player.px;
   prevPy = player.py;
   prevEnemyPx = enemyCtx.enemies.map(e => e.px);
   prevEnemyPy = enemyCtx.enemies.map(e => e.py);
 
   if (isDemo) {
+    // Demo: start zoomed immediately
+    zoomMode = true;
+    snapCamera();
+    renderZoomedFrame();
+    drawHud(ctx2d, score, level, gems.gemsLeft - gems.gemsCollected, timerSec, gems.hasGun, false, isDemo);
     phase = Phase.Playing;
   } else {
+    // Normal: draw at 1x for presentation, then zoom-in transition after
+    zoomMode = false;
+    drawMaze(ctx2d, maze);
+    drawItems(ctx2d, gems);
+    for (let i = 0; i < enemyCtx.enemies.length; i++) {
+      drawEnemy(ctx2d, enemyCtx.enemies[i], i, 0, maze);
+    }
+    drawPlayer(ctx2d, player, maze);
+    drawHud(ctx2d, score, level, gems.gemsLeft - gems.gemsCollected, timerSec, gems.hasGun, false, isDemo);
     startPresentation();
   }
 }
@@ -288,7 +483,40 @@ function endPresentation(): void {
   eraseRectBorder(presentRect);
   const gemsToGo = Math.max(0, gems.gemsNeeded - gems.gemsCollected);
   drawHud(ctx2d, score, level, gemsToGo, timerSec, gems.hasGun, false, isDemo);
-  phase = Phase.Playing;
+
+  // Draw full maze scene once
+  drawMaze(ctx2d, maze);
+  drawItems(ctx2d, gems);
+  for (let i = 0; i < enemyCtx.enemies.length; i++) {
+    drawEnemy(ctx2d, enemyCtx.enemies[i], i, 0, maze);
+  }
+  drawPlayer(ctx2d, player, maze);
+
+  // Capture as snapshot for countdown frames
+  const bgCtx = countdownBgCanvas.getContext('2d')!;
+  bgCtx.drawImage(canvas, 0, 0);
+
+  // Pre-render each word's text to its own canvas
+  countdownTextImgs.length = 0;
+  for (const w of COUNTDOWN_WORDS) {
+    const c = document.createElement('canvas');
+    c.width = 400;
+    c.height = 80;
+    const tc = c.getContext('2d')!;
+    tc.font = `bold 48px 'Press Start 2P', monospace`;
+    tc.textAlign = 'center';
+    tc.textBaseline = 'middle';
+    tc.lineWidth = 6;
+    tc.strokeStyle = '#000000';
+    tc.strokeText(w.text, 200, 40);
+    tc.fillStyle = w.color;
+    tc.fillText(w.text, 200, 40);
+    countdownTextImgs.push(c);
+  }
+
+  countdownFrame = 0;
+  zoomMode = false;
+  phase = Phase.Countdown;
 }
 
 function tickPresenting(): void {
@@ -413,6 +641,10 @@ function tick(): void {
         }
       }
     }
+  } else if (phase === Phase.ZoomIn) {
+    tickZoomIn();
+  } else if (phase === Phase.Countdown) {
+    tickCountdown();
   } else if (phase === Phase.HiScores) {
     tickHiScores();
   } else if (phase === Phase.NameEntry) {
@@ -480,6 +712,7 @@ function tickPlaying(): void {
     timerSec--;
     if (timerSec <= 0) {
       sndTimeUp();
+      if (zoomMode) renderZoomedFrame();
       phase = Phase.GameOver;
       overlayTimer = FPS * 3;
       overlayKeyWait = true;
@@ -495,9 +728,11 @@ function tickPlaying(): void {
   if (shotPath && shotTimer > 0) {
     shotTimer--;
     if (shotTimer === 0) {
-      eraseShotLine(ctx2d, shotPath, maze);
-      for (const { gx, gy } of shotPath) {
-        redrawItemsNear(ctx2d, gx * CELL_SIZE, gy * CELL_SIZE, gems);
+      if (!zoomMode) {
+        eraseShotLine(ctx2d, shotPath, maze);
+        for (const { gx, gy } of shotPath) {
+          redrawItemsNear(ctx2d, gx * CELL_SIZE, gy * CELL_SIZE, gems);
+        }
       }
       shotPath = null;
     }
@@ -514,15 +749,16 @@ function tickPlaying(): void {
       score += 10;
       sndGem();
       if (gems.exitOpen && !wasExitOpen) sndExitOpen();
-      drawItems(ctx2d, gems);
+      if (!zoomMode) drawItems(ctx2d, gems);
     }
     if (tryCollectGun(gems, player.gx, player.gy)) {
       sndGunPickup();
-      drawItems(ctx2d, gems);
+      if (!zoomMode) drawItems(ctx2d, gems);
     }
     if (gems.exitOpen && player.gx === gems.exitGx && player.gy === gems.exitGy) {
       score += timerSec * 5;
       sndWin();
+      if (zoomMode) renderZoomedFrame();
       phase = Phase.LevelWon;
       overlayTimer = FPS * 2;
       overlayKeyWait = true;
@@ -544,7 +780,7 @@ function tickPlaying(): void {
     if (result.path.length > 0) {
       shotPath = result.path;
       shotTimer = SHOT_DISPLAY_FRAMES;
-      drawShotLine(ctx2d, shotPath);
+      if (!zoomMode) drawShotLine(ctx2d, shotPath);
       if (result.hitEnemy !== -1) sndShotHit();
     }
   }
@@ -554,6 +790,7 @@ function tickPlaying(): void {
   const collision = updateEnemies(enemyCtx, player.gx, player.gy, player.px, player.py, maze, gems, CELL_SIZE);
   if (collision) {
     sndCaught();
+    if (zoomMode) renderZoomedFrame();
     phase = Phase.GameOver;
     overlayTimer = FPS * 3;
     overlayKeyWait = true;
@@ -566,32 +803,39 @@ function tickPlaying(): void {
 
   // ─── Draw ───
 
-  // Erase old player position
-  if (player.px !== prevPx || player.py !== prevPy) {
-    eraseTiles(ctx2d, prevPx, prevPy, maze);
-    redrawItemsNear(ctx2d, prevPx, prevPy, gems);
-  }
-
-  // Erase old enemy positions
-  for (let i = 0; i < enemyCtx.enemies.length; i++) {
-    const e = enemyCtx.enemies[i];
-    if (e.px !== prevEnemyPx[i] || e.py !== prevEnemyPy[i]) {
-      eraseTiles(ctx2d, prevEnemyPx[i], prevEnemyPy[i], maze);
-      redrawItemsNear(ctx2d, prevEnemyPx[i], prevEnemyPy[i], gems);
+  if (zoomMode) {
+    renderZoomedFrame();
+  } else {
+    // Erase old player position
+    if (player.px !== prevPx || player.py !== prevPy) {
+      eraseTiles(ctx2d, prevPx, prevPy, maze);
+      redrawItemsNear(ctx2d, prevPx, prevPy, gems);
     }
+
+    // Erase old enemy positions
+    for (let i = 0; i < enemyCtx.enemies.length; i++) {
+      const e = enemyCtx.enemies[i];
+      if (e.px !== prevEnemyPx[i] || e.py !== prevEnemyPy[i]) {
+        eraseTiles(ctx2d, prevEnemyPx[i], prevEnemyPy[i], maze);
+        redrawItemsNear(ctx2d, prevEnemyPx[i], prevEnemyPy[i], gems);
+      }
+    }
+
+    // Draw enemies
+    for (let i = 0; i < enemyCtx.enemies.length; i++) {
+      drawEnemy(ctx2d, enemyCtx.enemies[i], i, frameCount, maze);
+    }
+
+    // Draw player on top
+    drawPlayer(ctx2d, player, maze);
   }
 
-  // Draw enemies
+  prevPx = player.px;
+  prevPy = player.py;
   for (let i = 0; i < enemyCtx.enemies.length; i++) {
-    drawEnemy(ctx2d, enemyCtx.enemies[i], i, frameCount, maze);
     prevEnemyPx[i] = enemyCtx.enemies[i].px;
     prevEnemyPy[i] = enemyCtx.enemies[i].py;
   }
-
-  // Draw player on top
-  drawPlayer(ctx2d, player, maze);
-  prevPx = player.px;
-  prevPy = player.py;
 
   // Update HUD
   const gemsToGo = Math.max(0, gems.gemsNeeded - gems.gemsCollected);

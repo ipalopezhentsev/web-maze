@@ -59,6 +59,7 @@ VS Code: `Ctrl+Shift+B` runs the build task.
 Ported from a ZX Spectrum game written in C. Original source: https://github.com/ipalopezhentsev/zxspectrum-games
 
 ## Bugs
+- no sound on ipad
 
 ## TODO
-- add new mode where we see just a window from complete maze, with larger sprites
++ add new mode where we see just a window from complete maze, with larger sprites
