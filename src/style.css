@@ -133,7 +133,7 @@ header {
   font-size: 10px;
   padding: 6px 10px;
   white-space: nowrap;
-  pointer-events: none;
+  cursor: pointer;
   animation: blink 1s step-start infinite;
   z-index: 10;
 }

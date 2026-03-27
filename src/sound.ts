@@ -194,20 +194,22 @@ export function sndTimeUp(): void {
 
 /** Call on first user interaction to unlock audio (required on iOS/Safari). */
 export function initSound(): void {
-  // Always create a fresh context inside the user gesture.
-  // A context created outside a gesture is permanently suspended on iOS.
-  if (audioCtx) {
-    audioCtx.close();
+  if (!audioCtx) {
+    audioCtx = new AudioContextCtor();
   }
-  audioCtx = new AudioContextCtor();
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  // Play an audible confirmation beep so we can verify the context is working.
   const ctx = audioCtx;
-  if (ctx.state === 'suspended') {
-    ctx.resume();
-  }
-  // Silent 1-frame buffer — the standard iOS Web Audio unlock trick.
-  const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.connect(ctx.destination);
-  src.start(0);
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 880;
+  gain.gain.value = 0.05;
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.08);
 }

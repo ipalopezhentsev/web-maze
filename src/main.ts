@@ -28,16 +28,17 @@ const ctx2d = canvas.getContext('2d')!;
 ctx2d.imageSmoothingEnabled = false;
 
 // Unlock Web Audio on first user gesture (required on iOS/Safari).
-// Must be document-level and include touchstart — iOS doesn't always fire pointerdown.
+// 'click' fires on tap on iOS and is the most reliably accepted gesture for audio unlock.
 const soundPrompt = document.getElementById('sound-prompt') as HTMLElement;
+let audioUnlocked = false;
 const unlockAudio = () => {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
   initSound();
   soundPrompt.style.display = 'none';
-  document.removeEventListener('touchstart', unlockAudio);
-  document.removeEventListener('pointerdown', unlockAudio);
 };
-document.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
-document.addEventListener('pointerdown', unlockAudio, { once: true });
+document.addEventListener('click', unlockAudio);
+document.addEventListener('touchend', unlockAudio, { passive: true });
 
 let zoomMode = true;
 let cameraX = 0;
