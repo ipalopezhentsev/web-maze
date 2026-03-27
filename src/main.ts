@@ -28,17 +28,21 @@ const ctx2d = canvas.getContext('2d')!;
 ctx2d.imageSmoothingEnabled = false;
 
 // Unlock Web Audio on first user gesture (required on iOS/Safari).
-// 'click' fires on tap on iOS and is the most reliably accepted gesture for audio unlock.
-const soundPrompt = document.getElementById('sound-prompt') as HTMLElement;
+// Must use a <button> with a direct touchstart listener — iOS does not reliably
+// fire 'click' on non-interactive elements, and document-level bubbling can fail.
+const soundPrompt = document.getElementById('sound-prompt') as HTMLButtonElement;
 let audioUnlocked = false;
-const unlockAudio = () => {
+const unlockAudio = (e?: Event) => {
+  if (e) e.preventDefault();
   if (audioUnlocked) return;
   audioUnlocked = true;
   initSound();
   soundPrompt.style.display = 'none';
 };
-document.addEventListener('click', unlockAudio);
-document.addEventListener('touchend', unlockAudio, { passive: true });
+soundPrompt.addEventListener('touchstart', unlockAudio, { passive: false });
+soundPrompt.addEventListener('click', unlockAudio);
+// Also unlock on Enter key press (desktop / keyboard users)
+document.addEventListener('keydown', (e) => { if (e.code === 'Enter') unlockAudio(); });
 
 let zoomMode = true;
 let cameraX = 0;
@@ -96,7 +100,7 @@ function syncMuteBtn(): void {
   muteBtn.classList.toggle('muted', muted);
 }
 syncMuteBtn();
-muteBtn.addEventListener('click', () => { initSound(); toggleMute(); syncMuteBtn(); });
+muteBtn.addEventListener('click', () => { toggleMute(); syncMuteBtn(); });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') { toggleMute(); syncMuteBtn(); }
   if (e.code === 'KeyZ') toggleZoom();

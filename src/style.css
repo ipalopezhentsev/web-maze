@@ -138,7 +138,7 @@ header {
   z-index: 10;
 }
 @keyframes blink { 50% { opacity: 0; } }
-@media (pointer: coarse) {
+@media (any-pointer: coarse) {
   #sound-prompt { display: block; }
 }
 
