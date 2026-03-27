@@ -117,6 +117,29 @@ header {
   flex-shrink: 1;
   min-width: 0;
   line-height: 0;
+  position: relative;
+}
+
+#sound-prompt {
+  display: none;
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--zx-black);
+  border: 2px solid var(--zx-byellow);
+  color: var(--zx-byellow);
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  padding: 6px 10px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: blink 1s step-start infinite;
+  z-index: 10;
+}
+@keyframes blink { 50% { opacity: 0; } }
+@media (pointer: coarse) {
+  #sound-prompt { display: block; }
 }
 
 #game {

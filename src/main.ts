@@ -27,8 +27,17 @@ canvas.height = CANVAS_HEIGHT;
 const ctx2d = canvas.getContext('2d')!;
 ctx2d.imageSmoothingEnabled = false;
 
-// Unlock Web Audio on first user gesture (required on iOS/Safari)
-canvas.addEventListener('pointerdown', () => initSound(), { once: true });
+// Unlock Web Audio on first user gesture (required on iOS/Safari).
+// Must be document-level and include touchstart — iOS doesn't always fire pointerdown.
+const soundPrompt = document.getElementById('sound-prompt') as HTMLElement;
+const unlockAudio = () => {
+  initSound();
+  soundPrompt.style.display = 'none';
+  document.removeEventListener('touchstart', unlockAudio);
+  document.removeEventListener('pointerdown', unlockAudio);
+};
+document.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+document.addEventListener('pointerdown', unlockAudio, { once: true });
 
 let zoomMode = true;
 let cameraX = 0;

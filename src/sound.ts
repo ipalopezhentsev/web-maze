@@ -187,17 +187,14 @@ export function initSound(): void {
     audioCtx = new AudioContextCtor();
   }
   const ctx = audioCtx;
-  const unlock = () => {
-    // Play a silent one-frame buffer — this is the standard iOS unlock trick
-    const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
-  };
+  // resume() and the silent buffer must both be called synchronously within
+  // the user-gesture handler — iOS exits the trusted window after any await/then.
   if (ctx.state === 'suspended') {
-    ctx.resume().then(unlock);
-  } else {
-    unlock();
+    ctx.resume();
   }
+  const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  src.start(0);
 }
