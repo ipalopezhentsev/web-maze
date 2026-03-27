@@ -39,6 +39,12 @@ const zoomTransCtx = zoomTransCanvas.getContext('2d')!;
 let zoomTransFrame = 0;
 const ZOOM_IN_FRAMES = 30; // 0.6 s at 50 fps
 
+// Pre-rendered 2× maze background (static tiles only; rebuilt once per level)
+const zoomedMazeCanvas = document.createElement('canvas');
+zoomedMazeCanvas.width = ECOLS * CELL_SIZE * 2;
+zoomedMazeCanvas.height = EROWS * CELL_SIZE * 2;
+const zoomedMazeCtx = zoomedMazeCanvas.getContext('2d')!;
+
 // Countdown state ("READY… SET… GO!")
 let countdownFrame = 0;
 const COUNTDOWN_WORDS = [
@@ -161,6 +167,12 @@ let presentKeyWait = false;
 
 // ─── Zoom mode helpers ───
 
+function buildZoomedMaze(): void {
+  setZoomRender(2, 0, HUD_HEIGHT);
+  drawMaze(zoomedMazeCtx, maze);
+  resetZoomRender();
+}
+
 /** Update camera to smoothly track player position in zoomed pixel coords. */
 function updateCamera(): void {
   const cellSz = CELL_SIZE * 2;
@@ -190,25 +202,19 @@ function snapCamera(): void {
   cameraY = Math.max(0, Math.min(mazeH - viewH, player.py * 2 + cellSz / 2 - viewH / 2));
 }
 
-/** Render the zoomed view: draw visible tiles + sprites at 2x directly to display canvas. */
+/** Render the zoomed view: blit pre-rendered maze background + draw sprites at 2x. */
 function renderZoomedFrame(): void {
   updateCamera();
   const camRX = Math.round(cameraX);
   const camRY = Math.round(cameraY);
-  const cellSz = CELL_SIZE * 2;
-
-  const gxMin = Math.max(0, Math.floor(camRX / cellSz));
-  const gyMin = Math.max(0, Math.floor(camRY / cellSz));
-  const gxMax = Math.min(ECOLS, Math.ceil((camRX + CANVAS_WIDTH) / cellSz) + 1);
-  const gyMax = Math.min(EROWS, Math.ceil((camRY + CANVAS_HEIGHT - HUD_HEIGHT) / cellSz) + 1);
 
   setZoomRender(2, camRX, camRY);
 
-  // Clear maze area for edge cells
-  ctx2d.fillStyle = '#000';
-  ctx2d.fillRect(0, HUD_HEIGHT, CANVAS_WIDTH, CANVAS_HEIGHT - HUD_HEIGHT);
-
-  drawMaze(ctx2d, maze, gxMin, gyMin, gxMax, gyMax);
+  ctx2d.drawImage(
+    zoomedMazeCanvas,
+    camRX, camRY, CANVAS_WIDTH, CANVAS_HEIGHT - HUD_HEIGHT,
+    0, HUD_HEIGHT, CANVAS_WIDTH, CANVAS_HEIGHT - HUD_HEIGHT,
+  );
   drawItems(ctx2d, gems);
   if (shotPath && shotTimer > 0) drawShotLine(ctx2d, shotPath);
   for (let i = 0; i < enemyCtx.enemies.length; i++) {
@@ -331,6 +337,7 @@ function startLevel(): void {
   const timeLimit = Math.max(15, diff.timeLimit - (level - 1) * 3);
 
   maze = generateMaze(diff.extraWallPct, diff.extraHallsBase, diff.extraHallsRng);
+  buildZoomedMaze();
   player = createPlayer(1, 1, CELL_SIZE);
   gems = initGems(player.gx, player.gy);
   enemyCtx = createEnemies(
