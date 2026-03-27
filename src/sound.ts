@@ -12,13 +12,15 @@ export function toggleMute(): void {
   localStorage.setItem('mazeMuted', soundMuted ? '1' : '0');
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const AudioContextCtor: typeof AudioContext = (window as any).AudioContext ?? (window as any).webkitAudioContext;
+
 let audioCtx: AudioContext | null = null;
 
 function getCtx(): AudioContext {
   if (!audioCtx) {
-    audioCtx = new AudioContext();
+    audioCtx = new AudioContextCtor();
   }
-  // Resume if suspended (browsers require user gesture)
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
@@ -179,7 +181,23 @@ export function sndTimeUp(): void {
   beep(200, 0.3, t + 0.3);
 }
 
-/** Call on first user interaction to unlock audio. */
+/** Call on first user interaction to unlock audio (required on iOS/Safari). */
 export function initSound(): void {
-  getCtx();
+  if (!audioCtx) {
+    audioCtx = new AudioContextCtor();
+  }
+  const ctx = audioCtx;
+  const unlock = () => {
+    // Play a silent one-frame buffer — this is the standard iOS unlock trick
+    const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+  };
+  if (ctx.state === 'suspended') {
+    ctx.resume().then(unlock);
+  } else {
+    unlock();
+  }
 }

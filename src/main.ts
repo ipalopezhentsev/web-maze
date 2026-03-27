@@ -27,6 +27,9 @@ canvas.height = CANVAS_HEIGHT;
 const ctx2d = canvas.getContext('2d')!;
 ctx2d.imageSmoothingEnabled = false;
 
+// Unlock Web Audio on first user gesture (required on iOS/Safari)
+canvas.addEventListener('pointerdown', () => initSound(), { once: true });
+
 let zoomMode = true;
 let cameraX = 0;
 let cameraY = 0;
@@ -83,7 +86,7 @@ function syncMuteBtn(): void {
   muteBtn.classList.toggle('muted', muted);
 }
 syncMuteBtn();
-muteBtn.addEventListener('click', () => { toggleMute(); syncMuteBtn(); });
+muteBtn.addEventListener('click', () => { initSound(); toggleMute(); syncMuteBtn(); });
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') { toggleMute(); syncMuteBtn(); }
   if (e.code === 'KeyZ') toggleZoom();
