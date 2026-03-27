@@ -580,7 +580,6 @@ function startDemo(): void {
   difficulty = menuCursor;
   level = 1;
   score = 0;
-  initSound();
   startLevel();
 }
 

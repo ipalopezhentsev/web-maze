@@ -17,10 +17,10 @@ const AudioContextCtor: typeof AudioContext = (window as any).AudioContext ?? (w
 
 let audioCtx: AudioContext | null = null;
 
-function getCtx(): AudioContext {
-  if (!audioCtx) {
-    audioCtx = new AudioContextCtor();
-  }
+// Returns null if initSound() has not yet been called (no user gesture yet).
+// This prevents creating a "poisoned" context outside a user gesture on iOS.
+function getCtx(): AudioContext | null {
+  if (!audioCtx) return null;
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
@@ -32,6 +32,7 @@ function getCtx(): AudioContext {
  */
 function beep(freq: number, duration: number, startTime?: number): void {
   const ctx = getCtx();
+  if (!ctx) return;
   const t = startTime ?? ctx.currentTime;
 
   const osc = ctx.createOscillator();
@@ -48,6 +49,7 @@ function beep(freq: number, duration: number, startTime?: number): void {
 export function sndStep(walk: number): void {
   if (soundMuted) return;
   const ctx = getCtx();
+  if (!ctx) return;
   const t = ctx.currentTime;
   const duration = 0.025;
   const samples = Math.ceil(ctx.sampleRate * duration);
@@ -83,6 +85,7 @@ export function sndBump(): void {
 export function sndGem(): void {
   if (soundMuted) return;
   const ctx = getCtx();
+  if (!ctx) return;
   const t = ctx.currentTime;
   beep(1200, 0.04, t);
   beep(1600, 0.04, t + 0.04);
@@ -91,6 +94,7 @@ export function sndGem(): void {
 export function sndGunPickup(): void {
   if (soundMuted) return;
   const ctx = getCtx();
+  if (!ctx) return;
   const t = ctx.currentTime;
   beep(1000, 0.03, t);
   beep(1400, 0.03, t + 0.03);
@@ -100,6 +104,7 @@ export function sndGunPickup(): void {
 export function sndShot(): void {
   if (soundMuted) return;
   const ctx = getCtx();
+  if (!ctx) return;
   const t = ctx.currentTime;
   beep(2000, 0.03, t);
   beep(1500, 0.03, t + 0.03);
@@ -109,6 +114,7 @@ export function sndShot(): void {
 export function sndShotHit(): void {
   if (soundMuted) return;
   const ctx = getCtx();
+  if (!ctx) return;
   const t = ctx.currentTime;
   beep(600, 0.1, t);
   beep(900, 0.1, t + 0.1);
@@ -117,6 +123,7 @@ export function sndShotHit(): void {
 export function sndExitOpen(): void {
   if (soundMuted) return;
   const ctx = getCtx();
+  if (!ctx) return;
   const t = ctx.currentTime;
   beep(600, 0.08, t);
   beep(800, 0.08, t + 0.08);
@@ -126,6 +133,7 @@ export function sndExitOpen(): void {
 export function sndCaught(): void {
   if (soundMuted) return;
   const ctx = getCtx();
+  if (!ctx) return;
   const t = ctx.currentTime;
   beep(400, 0.12, t);
   beep(300, 0.12, t + 0.12);
@@ -135,6 +143,7 @@ export function sndCaught(): void {
 export function sndWin(): void {
   if (soundMuted) return;
   const ctx = getCtx();
+  if (!ctx) return;
   const t = ctx.currentTime;
   beep(800, 0.1, t);
   beep(1000, 0.1, t + 0.1);
@@ -144,6 +153,7 @@ export function sndWin(): void {
 export function sndThump(): void {
   if (soundMuted) return;
   const ctx = getCtx();
+  if (!ctx) return;
   const t = ctx.currentTime;
   const duration = 0.12;
   const samples = Math.ceil(ctx.sampleRate * duration);
@@ -175,6 +185,7 @@ export function sndThump(): void {
 export function sndTimeUp(): void {
   if (soundMuted) return;
   const ctx = getCtx();
+  if (!ctx) return;
   const t = ctx.currentTime;
   beep(500, 0.15, t);
   beep(350, 0.15, t + 0.15);
@@ -183,15 +194,17 @@ export function sndTimeUp(): void {
 
 /** Call on first user interaction to unlock audio (required on iOS/Safari). */
 export function initSound(): void {
-  if (!audioCtx) {
-    audioCtx = new AudioContextCtor();
+  // Always create a fresh context inside the user gesture.
+  // A context created outside a gesture is permanently suspended on iOS.
+  if (audioCtx) {
+    audioCtx.close();
   }
+  audioCtx = new AudioContextCtor();
   const ctx = audioCtx;
-  // resume() and the silent buffer must both be called synchronously within
-  // the user-gesture handler — iOS exits the trusted window after any await/then.
   if (ctx.state === 'suspended') {
     ctx.resume();
   }
+  // Silent 1-frame buffer — the standard iOS Web Audio unlock trick.
   const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
   const src = ctx.createBufferSource();
   src.buffer = buf;
