@@ -1,5 +1,5 @@
 import './style.css';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, CELL_SIZE, HUD_HEIGHT, FPS, DIFFICULTIES, ECOLS, EROWS, COLOR } from './constants.ts';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, CELL_SIZE, HUD_HEIGHT, FPS, DIFFICULTIES, ECOLS, EROWS, COLOR, COLS, ROWS } from './constants.ts';
 import { generateMaze } from './maze.ts';
 import {
   drawMaze, drawPlayer, drawItems, drawEnemy, drawShotLine, eraseShotLine,
@@ -355,7 +355,9 @@ function startLevel(): void {
 
   maze = generateMaze(diff.extraWallPct, diff.extraHallsBase, diff.extraHallsRng);
   buildZoomedMaze();
-  player = createPlayer(1, 1, CELL_SIZE);
+  const startCx = (Math.random() * COLS) | 0;
+  const startCy = (Math.random() * ROWS) | 0;
+  player = createPlayer(startCx * 2 + 1, startCy * 2 + 1, CELL_SIZE);
   gems = initGems(player.gx, player.gy);
   enemyCtx = createEnemies(
     numEnemies, player.gx, player.gy,

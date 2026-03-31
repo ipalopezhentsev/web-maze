@@ -25,9 +25,13 @@ export interface GemsState {
 export function initGems(playerGx: number, playerGy: number): GemsState {
   const gemmap = new Uint8Array(ROWS * COLS);
 
-  // Exit at bottom-right corridor cell
-  const exitGx = (COLS - 1) * 2 + 1;
-  const exitGy = (ROWS - 1) * 2 + 1;
+  // Exit at a random corridor cell far enough from the player
+  let exitGx: number, exitGy: number;
+  const minDist = COLS + ROWS; // minimum Manhattan distance in expanded-grid coords
+  do {
+    exitGx = (1 + ((Math.random() * COLS) | 0)) * 2 - 1;
+    exitGy = (1 + ((Math.random() * ROWS) | 0)) * 2 - 1;
+  } while (Math.abs(exitGx - playerGx) + Math.abs(exitGy - playerGy) < minDist);
 
   const target = Math.floor((ROWS * COLS) * 2 / 5);
 
